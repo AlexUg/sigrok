@@ -1,0 +1,17 @@
+diff --git a/Makefile.am b/Makefile.am
+index 2ff1ee0..3331623 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -384,6 +384,12 @@ src_libdrivers_la_SOURCES += \
+ 	src/hardware/kern-scale/protocol.c \
+ 	src/hardware/kern-scale/api.c
+ endif
++if HW_KINGST_LA1010
++src_libdrivers_la_SOURCES += \
++	src/hardware/kingst-la1010/protocol.h \
++	src/hardware/kingst-la1010/protocol.c \
++	src/hardware/kingst-la1010/api.c
++endif
+ if HW_KORAD_KAXXXXP
+ src_libdrivers_la_SOURCES += \
+ 	src/hardware/korad-kaxxxxp/protocol.h \
