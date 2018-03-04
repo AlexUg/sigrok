@@ -22,7 +22,7 @@ LA_MODEL_NAME => {
                                 }
                 }
 '''
-fw_offsets_dir = {
+fw_offsets_dict = {
     "LA1010" : { "e46c7a334b81769535bef396515fe2f1a5b2888f7a9963a5f34dfba8902b920f" :
                     { "FW" : ( 0x323F8, 0x1948 ), "BIN" : ( 0x13A58, 0x1E9A0 ) }
                 }
@@ -46,7 +46,7 @@ def main():
     (fwfilepath, fwfilename) = createFileName(laname, 'fw', dirname, base)
     (binfilepath, binfilename) = createFileName(laname, 'bitstream', dirname, base)
     try:
-        fw_offsets = fw_offsets_dir[laname];
+        fw_offsets = fw_offsets_dict[laname];
     except KeyError:
         print('LA \'{}\' isn\'t supported'.format(laname))
         return -1
