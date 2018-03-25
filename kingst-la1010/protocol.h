@@ -1,7 +1,7 @@
 /*
+ * This file is part of the libsigrok project.
  *
- *
- * Copyright (C) 2017 Alexandr Ugnenko <ugnenko@mail.com>
+ * Copyright (C) 2018 Alexandr Ugnenko <ugnenko@mail.ru>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,21 +15,14 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * This program based on sources of 'fx2lafw' by Bert Vermeulen <bert@biot.com>
- *                                            and Joel Holdsworth <joel@airwebreathe.org.uk>
  */
-
-
 
 #ifndef LIBSIGROK_HARDWARE_KINGST_LA1010_PROTOCOL_H
 #define LIBSIGROK_HARDWARE_KINGST_LA1010_PROTOCOL_H
 
-#include <glib.h>
 #include <stdint.h>
-#include <stdlib.h>
+#include <glib.h>
 #include <string.h>
-#include <libusb.h>
 #include <libsigrok/libsigrok.h>
 #include "libsigrok-internal.h"
 
@@ -42,7 +35,7 @@
 #define USB_SAMPLING_DATA_EP    0x86
 
 #define MAX_RENUM_DELAY_MS	3000
-#define NUM_SIMUL_TRANSFERS	8
+#define NUM_SIMUL_TRANSFERS	16
 #define MAX_EMPTY_TRANSFERS	(NUM_SIMUL_TRANSFERS * 2)
 
 #define NUM_CHANNELS		16
@@ -68,7 +61,6 @@
 #define CMD_SPARTAN_UPLOAD              0x50
 #define CMD_60                          0x60
 
-
 #define CMD_CONTROL_START               0x0000
 #define CMD_STATUS_FX_STATUS            0x0008
 #define CMD_CONTROL_END                 0x0001
@@ -79,24 +71,24 @@
 #define CMD_CONTROL_PWM_1               0x0070
 #define CMD_CONTROL_PWM_2               0x0078
 
-
-
 #define SAMPLING_BASE_FREQUENCY         800000000
 #define PWM_BASE_FREQUENCY              200000000
 
-
-
-enum voltage_range
-{
-  VOLTAGE_RANGE_TTL,
-  VOLTAGE_RANGE_5_V,
-  VOLTAGE_RANGE_3_3_V,
-  VOLTAGE_RANGE_3_V,
-  VOLTAGE_RANGE_2_5_V,
-  VOLTAGE_RANGE_1_8_V,
-  VOLTAGE_RANGE_1_5_V,
+enum voltage_range {
+	VOLTAGE_RANGE_TTL,
+	VOLTAGE_RANGE_5_V,
+	VOLTAGE_RANGE_3_3_V,
+	VOLTAGE_RANGE_3_V,
+	VOLTAGE_RANGE_2_5_V,
+	VOLTAGE_RANGE_1_8_V,
+	VOLTAGE_RANGE_1_5_V,
 };
 
+struct pwm_data {
+	uint64_t freq;
+	uint64_t duty;
+	uint8_t enabled;
+};
 
 struct kingst_la1010_profile {
 	uint16_t vid;
@@ -129,18 +121,16 @@ struct dev_context {
 	const uint64_t *samplerates;
 	int num_samplerates;
 
-	uint16_t channel_mask;
-        uint8_t channel_count;
-
 	uint64_t cur_samplerate;
 	uint64_t limit_samples;
-	unsigned int sent_samples;
 
 	uint64_t capture_ratio;
 
-        enum voltage_range selected_voltage_level;
+	struct pwm_data pwm[2];
 
-        double user_defined_level;
+	enum voltage_range selected_voltage_level;
+
+	double user_defined_level;
 
 	gboolean trigger_fired;
 	gboolean acq_aborted;
@@ -153,33 +143,43 @@ struct dev_context {
 	struct libusb_transfer **transfers;
 	struct sr_context *ctx;
 
+	uint16_t cur_channels;
+	int num_channels;
+	int cur_channel;
+	uint16_t channel_masks[16];
+	uint16_t channel_data[16];
+	uint64_t sent_samples;
 	uint8_t *convbuffer;
-	uint64_t convbuffer_size;
+	size_t convbuffer_size;
 };
 
-union fx_status
-{
-  uint8_t bytes[2];
-  uint16_t code;
+union fx_status {
+	uint8_t bytes[2];
+	uint16_t code;
 };
 
-union spartan_status
-{
-  uint8_t bytes[4];
-  uint32_t code;
+union spartan_status {
+	uint8_t bytes[4];
+	uint32_t code;
 };
 
-SR_PRIV int kingst_la1010_dev_open(struct sr_dev_inst *sdi, struct sr_dev_driver *di);
-SR_PRIV struct dev_context *kingst_la1010_dev_new(void);
-SR_PRIV int kingst_la1010_start_acquisition(const struct sr_dev_inst *sdi);
-SR_PRIV void kingst_la1010_abort_acquisition(const struct sr_dev_inst *sdi);
+SR_PRIV struct dev_context * kingst_la1010_dev_new(void);
+SR_PRIV int kingst_la1010_dev_open(const struct sr_dev_inst *sdi);
+SR_PRIV int kingst_la1010_abort_acquisition_request(libusb_device_handle * handle);
+SR_PRIV int kingst_la1010_has_fx_firmware(struct libusb_device_handle *hdl);
+SR_PRIV int kingst_la1010_has_spartan_firmware(struct libusb_device_handle *hdl);
+SR_PRIV int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi);
+SR_PRIV int kingst_la1010_init_spartan(struct libusb_device_handle * handle);
+SR_PRIV int kingst_la1010_acquisition_start(const struct sr_dev_inst *sdi);
+SR_PRIV int kingst_la1010_acquisition_stop(const struct sr_dev_inst *sdi);
+SR_PRIV int kingst_la1010_set_logic_level(struct libusb_device_handle *hdl, double level);
+SR_PRIV int kingst_la1010_receive_data(int fd, int revents, void *cb_data);
+SR_PRIV int kingst_la1010_configure_channels(const struct sr_dev_inst *sdi);
+SR_PRIV int kingst_la1010_configure_pwm(struct libusb_device_handle *hdl,
+										uint64_t pwm1_freq,
+										uint64_t pwm1_duty,
+										uint64_t pwm2_freq,
+										uint64_t pwm2_duty);
 
-int kingst_la1010_has_fx_firmware(struct libusb_device_handle *hdl);
-int kingst_la1010_has_spartan_firmware(struct libusb_device_handle *hdl);
-int kingst_la1010_upload_spartan_firmware(struct sr_dev_inst *sdi);
-int kingst_la1010_init_spartan (struct libusb_device_handle *hdl);
-
-int kingst_la1010_configure_pwm(struct libusb_device_handle *hdl, int pwm1_freq, int pwm1_duty, int pwm2_freq, int pwm2_duty);
-int kingst_la1010_set_logic_level(struct libusb_device_handle *hdl, double level);
 
 #endif
