@@ -113,8 +113,6 @@ int kingst_la1010_acquisition_start(const struct sr_dev_inst *sdi) {
 	devc->convbuffer = g_try_malloc(devc->convbuffer_size);
 
 	if (devc->convbuffer) {
-		sr_dbg("Allocated logic data buffer size %ld", devc->convbuffer_size);
-
 		if ((ret = command_start_acquisition(sdi)) != SR_OK) {
 			kingst_la1010_acquisition_stop(sdi);
 			if (devc->convbuffer)
@@ -161,8 +159,6 @@ static int command_start_acquisition(const struct sr_dev_inst *sdi) {
 
 	division = SAMPLING_BASE_FREQUENCY / samplerate;
 
-	sr_dbg("Set sample rate %ld, division %d", samplerate, division);
-
 	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_SAMPLE_RATE,
 			(uint8_t *) &division, sizeof(division));
 	if (err) {
@@ -170,7 +166,6 @@ static int command_start_acquisition(const struct sr_dev_inst *sdi) {
 		return err;
 	}
 
-	sr_dbg("Set channel mask 0x%x", devc->cur_channels);
 	data[0] = devc->cur_channels & 0xFF;
 	data[1] = devc->cur_channels >> 8;
 	data[2] = 0;
@@ -357,7 +352,7 @@ int kingst_la1010_init_spartan(struct libusb_device_handle * handle) {
 	/*
 	 * Configure PWM channels -- two channels.
 	 */
-	err = kingst_la1010_configure_pwm(handle, 1000, 50, 5000, 50);
+	err = kingst_la1010_configure_pwm(handle, 0, 50, 0, 50);
 	if (err)
 		return err;
 
@@ -371,8 +366,6 @@ int kingst_la1010_init_spartan(struct libusb_device_handle * handle) {
 int kingst_la1010_set_logic_level(struct libusb_device_handle *hdl, double level) {
 	uint32_t data;
 	int err;
-
-	sr_dbg("kingst_la1010_set_logic_level(): level %f", level);
 
 	if (level > -0.4) {
 		if (level < 3) {
@@ -409,8 +402,6 @@ int kingst_la1010_set_logic_level(struct libusb_device_handle *hdl, double level
 	if (err)
 		return err;
 
-	sr_dbg("kingst_la1010_set_logic_level(): done");
-
 	return SR_OK;
 }
 
@@ -427,9 +418,6 @@ int kingst_la1010_configure_pwm(struct libusb_device_handle *hdl,
 								uint64_t pwm2_duty) {
 	uint32_t data[2];
 	int err;
-
-	sr_dbg("kingst_la1010_configure_pwm(): pwm1_freq %ld, pwm1_duty %ld, pwm2_freq %ld, pwm2_duty %ld",
-			pwm1_freq, pwm1_duty, pwm2_freq, pwm2_duty);
 
 	if (pwm1_duty > 100) {
 		sr_err("Wrong PWM1 duty ratio, given %ld, but only 0 .. 100 allowed",
@@ -481,8 +469,6 @@ int kingst_la1010_configure_pwm(struct libusb_device_handle *hdl,
 	err = control_out(hdl, CMD_CONTROL, CMD_CONTROL_PWM, (uint8_t *) &data, 1);
 	if (err)
 		return err;
-
-	sr_dbg("kingst_la1010_configure_pwm(): done");
 
 	return SR_OK;
 }
@@ -567,7 +553,6 @@ int kingst_la1010_dev_open(const struct sr_dev_inst *sdi) {
 
 static void LIBUSB_CALL
 abort_acquisition_request_cb(struct libusb_transfer *transfer) {
-	sr_dbg("abort_acquisition_request(): Stop sampling request done");
 	libusb_free_transfer(transfer);
 }
 
@@ -602,8 +587,6 @@ int kingst_la1010_abort_acquisition_request(libusb_device_handle * handle) {
 									1000);
 	transfer->flags = LIBUSB_TRANSFER_FREE_BUFFER;
 
-	sr_dbg("abort_acquisition_request(): Submit stop sampling request ...");
-
 	ret = libusb_submit_transfer(transfer);
 	if (ret < 0) {
 		libusb_free_transfer(transfer);
@@ -634,8 +617,6 @@ static void finish_acquisition(const struct sr_dev_inst *sdi) {
 		soft_trigger_logic_free(devc->stl);
 		devc->stl = NULL;
 	}
-
-	sr_dbg("finish_acquisition() done");
 }
 
 static void free_transfer(struct libusb_transfer *transfer) {
@@ -694,9 +675,6 @@ static size_t convert_sample_data(struct dev_context *devc,
 	channel_data = devc->channel_data;
 	cur_channel = devc->cur_channel;
 
-	sr_dbg("convert_sample_data() dstcnt %ld, srccnt %ld", destcnt, srccnt);
-	sr_dbg("convert_sample_data() devc->num_channels %d, cur_channel %d", devc->num_channels, cur_channel);
-
 	while (srccnt--) {
 		sample = src[0] | (src[1] << 8);
 		src += 2;
@@ -749,9 +727,6 @@ receive_transfer(struct libusb_transfer * transfer) {
 		return;
 	}
 
-	sr_dbg("receive_transfer(): status %s received %d bytes.",
-			libusb_error_name(transfer->status), transfer->actual_length);
-
 	switch (transfer->status) {
 	case LIBUSB_TRANSFER_NO_DEVICE:
 		kingst_la1010_acquisition_stop(sdi);
@@ -801,8 +776,6 @@ receive_transfer(struct libusb_transfer * transfer) {
 		}
 	}
 
-	sr_dbg("receive_transfer(): converted samples %ld, size %ld.", new_samples, new_samples * 2);
-
 	if (devc->trigger_fired) {
 		if (devc->limit_samples &&
 				new_samples > devc->limit_samples - devc->sent_samples)
@@ -831,8 +804,6 @@ receive_transfer(struct libusb_transfer * transfer) {
 	}
 
 	if (devc->limit_samples && devc->sent_samples >= devc->limit_samples) {
-		sr_dbg("receive_transfer(): stop after sent samples %ld",
-				devc->sent_samples);
 		kingst_la1010_acquisition_stop(sdi);
 		free_transfer(transfer);
 	} else
@@ -931,8 +902,6 @@ static int start_transfers(const struct sr_dev_inst *sdi) {
 		devc->trigger_fired = TRUE;
 
 	num_transfers = get_number_of_transfers(devc);
-
-	sr_dbg("start_transfers(): number of transfers %d", num_transfers);
 
 	size = get_buffer_size(devc);
 	devc->submitted_transfers = 0;
