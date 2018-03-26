@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-#!/usr/bin/python3
 ##
 ## This file is part of the sigrok-util project.
 ##
