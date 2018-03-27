@@ -1,0 +1,262 @@
+diff --git a/include/libsigrok/libsigrok.h b/include/libsigrok/libsigrok.h
+index cfc515d..57a2d2d 100644
+--- a/include/libsigrok/libsigrok.h
++++ b/include/libsigrok/libsigrok.h
+@@ -590,6 +590,8 @@ enum sr_channeltype {
+ 	SR_CHANNEL_LOGIC = 10000,
+ 	/** Channel type is analog channel. */
+ 	SR_CHANNEL_ANALOG,
++	/** Channel type is PWM channel. */
++	SR_CHANNEL_PWM,
+ };
+ 
+ /** Information on single channel. */
+@@ -989,6 +991,12 @@ enum sr_configkey {
+ 	/** Under-voltage condition threshold. */
+ 	SR_CONF_UNDER_VOLTAGE_CONDITION_THRESHOLD,
+ 
++	/** PWM frequency. */
++	SR_CONF_PWM_FREQ,
++
++	/** PWM duty. */
++	SR_CONF_PWM_DUTY,
++
+ 	/* Update sr_key_info_config[] (hwdriver.c) upon changes! */
+ 
+ 	/*--- Special stuff -------------------------------------------------*/
+diff --git a/src/hardware/kingst-la1010/api.c b/src/hardware/kingst-la1010/api.c
+index de985ef..71c65cc 100644
+--- a/src/hardware/kingst-la1010/api.c
++++ b/src/hardware/kingst-la1010/api.c
+@@ -50,6 +50,11 @@ static const uint32_t devopts[] = {
+ 	SR_CONF_TRIGGER_MATCH | SR_CONF_LIST, SR_CONF_CAPTURE_RATIO | SR_CONF_GET | SR_CONF_SET,
+ };
+ 
++static const uint32_t devopts_cg_pwm_channel[] = {
++	SR_CONF_PWM_FREQ | SR_CONF_GET | SR_CONF_SET,
++	SR_CONF_PWM_DUTY | SR_CONF_GET | SR_CONF_SET,
++};
++
+ static const int32_t trigger_matches[] = {
+ 	SR_TRIGGER_ZERO,
+ 	SR_TRIGGER_ONE,
+@@ -111,7 +116,7 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options) {
+ 	struct sr_dev_inst *sdi;
+ 	struct sr_usb_dev_inst *usb;
+ 	struct sr_channel *ch;
+-	struct sr_channel_group *cg;
++	struct sr_channel_group *cg, *pwmcg;
+ 	struct sr_config *src;
+ 	const struct kingst_la1010_profile *prof;
+ 	GSList *l, *devices, *conn_devices;
+@@ -245,6 +250,21 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options) {
+ 		}
+ 		sdi->channel_groups = g_slist_append(NULL, cg);
+ 
++		{
++			sr_dbg("Configure PWM channels");
++
++			for (j = 0; j < 2; j++) {
++				sprintf(channel_name, "PWM%d", j);
++				pwmcg = g_malloc0(sizeof(struct sr_channel_group));
++				pwmcg->name = g_strdup(channel_name);
++				ch = sr_channel_new(sdi, j + num_logic_channels, SR_CHANNEL_PWM, FALSE, channel_name);
++				pwmcg->channels = g_slist_append(pwmcg->channels, ch);
++				sdi->channel_groups = g_slist_append(sdi->channel_groups, pwmcg);
++			}
++
++			sr_dbg("Configure PWM channels done");
++		}
++
+ 		devc = kingst_la1010_dev_new();
+ 		devc->profile = prof;
+ 		sdi->priv = devc;
+@@ -414,6 +434,8 @@ static int config_get(uint32_t key,
+ 	unsigned int i;
+ 	struct dev_context *devc;
+ 	struct sr_usb_dev_inst *usb;
++	struct sr_channel *ch;
++	int num_logic_channels = 0;
+ 
+ 	(void) cg;
+ 
+@@ -453,6 +475,24 @@ static int config_get(uint32_t key,
+ 			return SR_OK;
+ 		}
+ 		return SR_ERR;
++	case SR_CONF_PWM_FREQ:
++		if (!cg)
++			return SR_ERR_CHANNEL_GROUP;
++		ch = cg->channels->data;
++		if (ch->type != SR_CHANNEL_PWM)
++			return SR_ERR_NA;
++		num_logic_channels = devc->profile->dev_caps & DEV_CAPS_16BIT ? 16 : 8;
++		*data = g_variant_new_uint64(devc->pwm[ch->index - num_logic_channels].freq);
++		break;
++	case SR_CONF_PWM_DUTY:
++		if (!cg)
++		return SR_ERR_CHANNEL_GROUP;
++		ch = cg->channels->data;
++		if (ch->type != SR_CHANNEL_PWM)
++			return SR_ERR_NA;
++		num_logic_channels = devc->profile->dev_caps & DEV_CAPS_16BIT ? 16 : 8;
++		*data = g_variant_new_uint64(devc->pwm[ch->index - num_logic_channels].duty);
++		break;
+ 	default:
+ 		return SR_ERR_NA;
+ 	}
+@@ -467,7 +507,9 @@ static int config_set(uint32_t key,
+ {
+ 	struct dev_context *devc;
+ 	struct sr_usb_dev_inst *usb;
++	struct sr_channel *ch;
+ 	int idx;
++	int num_logic_channels = 0;
+ 
+ 	(void) cg;
+ 
+@@ -495,6 +537,24 @@ static int config_set(uint32_t key,
+ 		usb = sdi->conn;
+ 		kingst_la1010_set_logic_level(usb->devhdl, thresholds[idx][0]);
+ 		break;
++	case SR_CONF_PWM_FREQ:
++		if (!cg)
++			return SR_ERR_CHANNEL_GROUP;
++		ch = cg->channels->data;
++		if (ch->type != SR_CHANNEL_PWM)
++			return SR_ERR_NA;
++		num_logic_channels = devc->profile->dev_caps & DEV_CAPS_16BIT ? 16 : 8;
++		devc->pwm[ch->index - num_logic_channels].freq = g_variant_get_uint64(data);
++		break;
++	case SR_CONF_PWM_DUTY:
++		if (!cg)
++			return SR_ERR_CHANNEL_GROUP;
++		ch = cg->channels->data;
++		if (ch->type != SR_CHANNEL_PWM)
++			return SR_ERR_NA;
++		num_logic_channels = devc->profile->dev_caps & DEV_CAPS_16BIT ? 16 : 8;
++		devc->pwm[ch->index - num_logic_channels].duty = g_variant_get_uint64(data);
++		break;
+ 	default:
+ 		return SR_ERR_NA;
+ 	}
+@@ -508,6 +568,7 @@ static int config_list(uint32_t key,
+ 						const struct sr_channel_group *cg)
+ {
+ 	struct dev_context *devc;
++	struct sr_channel *ch;
+ 
+ 	devc = (sdi) ? sdi->priv : NULL;
+ 
+@@ -531,9 +592,60 @@ static int config_list(uint32_t key,
+ 			return SR_ERR_NA;
+ 		}
+ 	} else {
+-		return SR_ERR_NA;
++		ch = cg->channels->data;
++		switch (key) {
++		case SR_CONF_DEVICE_OPTIONS:
++			if (ch->type == SR_CHANNEL_PWM) {
++				*data = std_gvar_array_u32(ARRAY_AND_SIZE(devopts_cg_pwm_channel));
++			}
++			else
++				return SR_ERR_BUG;
++			break;
++		case SR_CONF_PWM_FREQ:
++			if (ch->type == SR_CHANNEL_PWM) {
++				*data = std_gvar_min_max_step(1000.0, 50000000.0, 1.0);
++			}
++			else {
++				return SR_ERR_NA;
++			}
++			break;
++		case SR_CONF_PWM_DUTY:
++			if (ch->type == SR_CHANNEL_PWM) {
++				*data = std_gvar_min_max_step(1.0, 99.0, 1.0);
++			}
++			else {
++				return SR_ERR_NA;
++			}
++			break;
++		default:
++			return SR_ERR_NA;
++		}
+ 	}
++	return SR_OK;
++}
+ 
++static int config_channel_set (const struct sr_dev_inst *sdi, struct sr_channel *ch, unsigned int changes) {
++	struct dev_context *devc;
++	struct sr_usb_dev_inst *usb;
++	int err, ch_index, num_logic_channels;
++
++	devc = sdi->priv;
++	usb = sdi->conn;
++	if (ch && ch->type == SR_CHANNEL_PWM) {
++		sr_dbg("Configure PWM channels idx %d enable: %d changes %x", ch->index, ch->enabled, changes);
++		num_logic_channels = devc->profile->dev_caps & DEV_CAPS_16BIT ? 16 : 8;
++		ch_index = ch->index - num_logic_channels;
++		if (ch_index < 2) {
++			devc->pwm[ch_index].enabled = ch->enabled;
++			err = kingst_la1010_configure_pwm(usb->devhdl,
++												devc->pwm[0].freq * devc->pwm[0].enabled,
++												devc->pwm[0].duty,
++												devc->pwm[1].freq * devc->pwm[1].enabled,
++												devc->pwm[1].duty);
++			if (err)
++				return err;
++		}
++	}
+ 	return SR_OK;
+ }
+ 
+@@ -559,6 +671,7 @@ SR_PRIV struct sr_dev_driver kingst_la1010_driver_info = {
+ 	.config_list = config_list,
+ 	.dev_open = dev_open,
+ 	.dev_close = dev_close,
++	.config_channel_set = config_channel_set,
+ 	.dev_acquisition_start = dev_acquisition_start,
+ 	.dev_acquisition_stop = dev_acquisition_stop,
+ 	.context = NULL,
+diff --git a/src/hardware/kingst-la1010/protocol.c b/src/hardware/kingst-la1010/protocol.c
+index 532b1ca..d45e035 100644
+--- a/src/hardware/kingst-la1010/protocol.c
++++ b/src/hardware/kingst-la1010/protocol.c
+@@ -821,7 +821,8 @@ int kingst_la1010_configure_channels(const struct sr_dev_inst *sdi) {
+ 	devc->cur_channels = 0;
+ 	for (l = sdi->channels; l; l = l->next) {
+ 		ch = (struct sr_channel *) l->data;
+-		if (ch->enabled == FALSE)
++		if ((ch->type != SR_CHANNEL_LOGIC)
++				|| (ch->enabled == FALSE))
+ 			continue;
+ 
+ 		channel_bit = 1 << (ch->index);
+diff --git a/src/hardware/kingst-la1010/protocol.h b/src/hardware/kingst-la1010/protocol.h
+index 84a5e5d..7adc4e0 100644
+--- a/src/hardware/kingst-la1010/protocol.h
++++ b/src/hardware/kingst-la1010/protocol.h
+@@ -35,7 +35,7 @@
+ #define USB_SAMPLING_DATA_EP    0x86
+ 
+ #define MAX_RENUM_DELAY_MS	3000
+-#define NUM_SIMUL_TRANSFERS	16
++#define NUM_SIMUL_TRANSFERS	4
+ #define MAX_EMPTY_TRANSFERS	(NUM_SIMUL_TRANSFERS * 2)
+ 
+ #define NUM_CHANNELS		16
+diff --git a/src/hwdriver.c b/src/hwdriver.c
+index f5b5b25..e9715ca 100644
+--- a/src/hwdriver.c
++++ b/src/hwdriver.c
+@@ -181,6 +181,10 @@ static struct sr_key_info sr_key_info_config[] = {
+ 		"Under-voltage condition threshold", NULL},
+ 	{SR_CONF_TRIGGER_LEVEL, SR_T_FLOAT, "triggerlevel",
+ 		"Trigger level", NULL},
++	{SR_CONF_PWM_FREQ, SR_T_UINT64, "PWM freq",
++			"PWM frequency", NULL},
++	{SR_CONF_PWM_DUTY, SR_T_UINT64, "PWM duty",
++			"PWM duty", NULL},
+ 
+ 	/* Special stuff */
+ 	{SR_CONF_SESSIONFILE, SR_T_STRING, "sessionfile",

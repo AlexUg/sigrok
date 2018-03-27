@@ -1,0 +1,30 @@
+diff --git a/pv/binding/device.cpp b/pv/binding/device.cpp
+index 1afc2ce..e8a860b 100644
+--- a/pv/binding/device.cpp
++++ b/pv/binding/device.cpp
+@@ -126,6 +126,13 @@ Device::Device(shared_ptr<sigrok::Configurable> configurable) :
+ 				bind_int(name, "", "", pair<int64_t, int64_t>(1, 500), get, set);
+ 			break;
+ 
++		case SR_CONF_PWM_FREQ:
++			bind_int(name, "", "", pair<int64_t, int64_t>(1, 50000000), get, set);
++			break;
++		case SR_CONF_PWM_DUTY:
++			bind_int(name, "", "", pair<int64_t, int64_t>(1, 99), get, set);
++			break;
++
+ 		default:
+ 			break;
+ 		}
+diff --git a/pv/session.cpp b/pv/session.cpp
+index b1ce146..a7d3f8c 100644
+--- a/pv/session.cpp
++++ b/pv/session.cpp
+@@ -850,6 +850,7 @@ void Session::update_signals()
+ 
+ 					switch(channel->type()->id()) {
+ 					case SR_CHANNEL_LOGIC:
++					case SR_CHANNEL_PWM:
+ 						if (!signalbase) {
+ 							signalbase = make_shared<data::SignalBase>(channel,
+ 								data::SignalBase::LogicChannel);
