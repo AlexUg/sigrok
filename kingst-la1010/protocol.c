@@ -62,9 +62,13 @@ static int control_out (libusb_device_handle * handle,
 						uint16_t value,
 						uint8_t *data,
 						uint16_t size);
-static int upload_bindata (libusb_device_handle * handle,
-							uint8_t *data,
-							int size);
+//static int upload_bindata (libusb_device_handle * handle,
+//							uint8_t *data,
+//							int size);
+static int upload_bindata_sync (libusb_device_handle * handle,
+								uint8_t *data,
+								int size,
+								int trans_size);
 
 
 int kingst_la1010_receive_data(int fd, int revents, void *cb_data)
@@ -267,6 +271,7 @@ int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 	struct drv_context *drvc;
 	struct dev_context *devc;
 	struct sr_usb_dev_inst *usb;
+	struct libusb_device *usbdev;
 	union spartan_status status;
 	uint8_t *bindata;
 	uint32_t binsize;
@@ -275,8 +280,11 @@ int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 	drvc = sdi->driver->context;
 	devc = sdi->priv;
 
-	bindata = sr_resource_load(drvc->sr_ctx, SR_RESOURCE_FIRMWARE,
-			devc->profile->spartan_firmware, (size_t *) &binsize, 0x020000);
+	bindata = sr_resource_load(drvc->sr_ctx,
+							   SR_RESOURCE_FIRMWARE,
+							   devc->profile->spartan_firmware,
+							   (size_t *) &binsize,
+							   0x020000);
 	if (!bindata) {
 		return SR_ERR_MALLOC;
 	}
@@ -293,17 +301,27 @@ int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 	if (err)
 		return err;
 
-	err = upload_bindata(usb->devhdl, bindata, binsize);
-	if (err)
-		return err;
+	usbdev = libusb_get_device(usb->devhdl);
+	if (usbdev) {
+		i = libusb_get_max_packet_size(usbdev, 0x01);
 
-	err = control_in(usb->devhdl, CMD_CONTROL, CMD_CONTROL_START, status.bytes,
-			sizeof(status.bytes));
-	if (err)
-		return err;
+		sr_dbg("Upload Spartan firmware using packet size %d", i);
 
-	if (status.code) {
-		sr_err("Check Spartan returns wrong status: %d", status.code);
+		err = upload_bindata_sync(usb->devhdl, bindata, binsize, i);
+		if (err)
+			return err;
+
+		err = control_in(usb->devhdl, CMD_CONTROL, CMD_CONTROL_START, status.bytes,
+				sizeof(status.bytes));
+		if (err)
+			return err;
+
+		if (status.code) {
+			sr_err("Check Spartan returns wrong status: %d", status.code);
+			return SR_ERR;
+		}
+	} else {
+		sr_err("Upload Spartan failed. Can't get usb device struct by device handle");
 		return SR_ERR;
 	}
 
@@ -1005,69 +1023,117 @@ int control_out(libusb_device_handle * handle,
 	return SR_OK;
 }
 
-void LIBUSB_CALL
-upload_transfer_complete_cb(struct libusb_transfer * xfr) {
-	int * completed;
+// This function isn't used due malfunction of 'upload_bindata' with xhci driver.
+//
+//void LIBUSB_CALL
+//upload_transfer_complete_cb(struct libusb_transfer * xfr) {
+//	int * completed;
 
-	completed = xfr->user_data;
-	switch (xfr->status) {
-	case LIBUSB_TRANSFER_COMPLETED:
-		*completed = SR_OK;
-		break;
-	case LIBUSB_TRANSFER_CANCELLED:
-	case LIBUSB_TRANSFER_NO_DEVICE:
-	case LIBUSB_TRANSFER_TIMED_OUT:
-	case LIBUSB_TRANSFER_ERROR:
-	case LIBUSB_TRANSFER_STALL:
-	case LIBUSB_TRANSFER_OVERFLOW:
-		*completed = xfr->status;
-		break;
-	}
-}
+//	completed = xfr->user_data;
+//	switch (xfr->status) {
+//	case LIBUSB_TRANSFER_COMPLETED:
+//		*completed = SR_OK;
+//		break;
+//	case LIBUSB_TRANSFER_CANCELLED:
+//	case LIBUSB_TRANSFER_NO_DEVICE:
+//	case LIBUSB_TRANSFER_TIMED_OUT:
+//	case LIBUSB_TRANSFER_ERROR:
+//	case LIBUSB_TRANSFER_STALL:
+//	case LIBUSB_TRANSFER_OVERFLOW:
+//		*completed = xfr->status;
+//		break;
+//	}
+//}
 
-int upload_bindata(libusb_device_handle * handle, uint8_t * bindata, int size) {
-	struct libusb_transfer * xfr;
-	int completed, err;
+// This function doesn't work with xhci module.
+//
+//int upload_bindata(libusb_device_handle * handle, uint8_t * bindata, int size) {
+//	struct libusb_transfer * xfr;
+//	int completed, err;
 
-	completed = 1;
-	xfr = libusb_alloc_transfer(0);
-	if (xfr) {
-		libusb_fill_bulk_transfer(xfr,
-									handle,
-									0x01, // Endpoint ID
-									bindata,
-									size,
-									upload_transfer_complete_cb,
-									&completed,
-									60 * USB_TIMEOUT);
-		xfr->flags = LIBUSB_TRANSFER_ADD_ZERO_PACKET;
+//	completed = 1;
+//	xfr = libusb_alloc_transfer(0);
+//	if (xfr) {
+//		libusb_fill_bulk_transfer(xfr,
+//									handle,
+//									0x01, // Endpoint ID
+//									bindata,
+//									size,
+//									upload_transfer_complete_cb,
+//									&completed,
+//									60 * USB_TIMEOUT);
+//		xfr->flags = LIBUSB_TRANSFER_ADD_ZERO_PACKET;
 
-		err = libusb_submit_transfer(xfr);
-		if (err < 0) {
-			// Error
-			libusb_free_transfer(xfr);
-			sr_err("Failed to submit transfer for upload Spartan firmware: %s.",
+//		err = libusb_submit_transfer(xfr);
+//		if (err < 0) {
+//			// Error
+//			libusb_free_transfer(xfr);
+//			sr_err("Failed to submit transfer for upload Spartan firmware: %s.",
+//					libusb_error_name(err));
+//			return err;
+//		}
+
+//		while (completed) {
+//			if (libusb_handle_events(NULL) != LIBUSB_SUCCESS)
+//				break;
+//		}
+//		libusb_free_transfer(xfr);
+
+//		if (completed < 0) {
+//			sr_err("Failed to upload Spartan firmware: %s.",
+//					libusb_error_name(completed));
+//		}
+
+//		return completed;
+//	} else {
+//		sr_err("Failed to upload Spartan firmware: out of memory");
+//		return SR_ERR_MALLOC;
+//	}
+
+//}
+
+// This function replaces old 'upload_bindata', which not worked with xhci module
+int upload_bindata_sync(libusb_device_handle * handle, uint8_t * bindata, int size, int trans_size) {
+	int data_len, err, actual_len;
+
+	while (size > 0) {
+		data_len = size;
+		if (data_len > trans_size) {
+			data_len = trans_size;
+		}
+		err = libusb_bulk_transfer(handle,
+								   0x01,
+								   bindata,
+								   data_len,
+								   &actual_len,
+								   100
+									);
+		if (err) {
+			sr_err("Failed to upload Spartan firmware: %s.",
 					libusb_error_name(err));
 			return err;
+		} else if (actual_len != data_len) {
+			sr_err("Failed to upload Spartan firmware: sent %d but actual sent %d.",
+					data_len,
+				   actual_len);
+			return SR_ERR_DATA;
 		}
-
-		while (completed) {
-			if (libusb_handle_events(NULL) != LIBUSB_SUCCESS)
-				break;
-		}
-		libusb_free_transfer(xfr);
-
-		if (completed < 0) {
-			sr_err("Failed to upload Spartan firmware: %s.",
-					libusb_error_name(completed));
-		}
-
-		return completed;
-	} else {
-		sr_err("Failed to upload Spartan firmware: out of memory");
-		return SR_ERR_MALLOC;
+		size -= actual_len;
+		bindata += actual_len;
 	}
-
+	err = libusb_bulk_transfer(handle,
+							   0x01,
+							   NULL,
+							   0,
+							   &actual_len,
+							   100
+								);
+	if (err) {
+		sr_err("Failed to upload Spartan firmware: %s.",
+				libusb_error_name(err));
+		return err;
+	}
+	return size;
 }
 
 struct dev_context * kingst_la1010_dev_new(void) {

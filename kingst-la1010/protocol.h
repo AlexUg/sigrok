@@ -116,7 +116,6 @@ struct dev_context {
 	 * until a proper delay after the last device was upgraded.
 	 */
 	int64_t fw_updated;
-//	gboolean fw2_updated;
 
 	const uint64_t *samplerates;
 	int num_samplerates;
