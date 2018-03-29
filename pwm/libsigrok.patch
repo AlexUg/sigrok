@@ -219,10 +219,10 @@ index de985ef..71c65cc 100644
  	.dev_acquisition_stop = dev_acquisition_stop,
  	.context = NULL,
 diff --git a/src/hardware/kingst-la1010/protocol.c b/src/hardware/kingst-la1010/protocol.c
-index 532b1ca..d45e035 100644
+index 0aa8000..4cbf2c9 100644
 --- a/src/hardware/kingst-la1010/protocol.c
 +++ b/src/hardware/kingst-la1010/protocol.c
-@@ -821,7 +821,8 @@ int kingst_la1010_configure_channels(const struct sr_dev_inst *sdi) {
+@@ -839,7 +839,8 @@ int kingst_la1010_configure_channels(const struct sr_dev_inst *sdi) {
  	devc->cur_channels = 0;
  	for (l = sdi->channels; l; l = l->next) {
  		ch = (struct sr_channel *) l->data;
@@ -233,7 +233,7 @@ index 532b1ca..d45e035 100644
  
  		channel_bit = 1 << (ch->index);
 diff --git a/src/hardware/kingst-la1010/protocol.h b/src/hardware/kingst-la1010/protocol.h
-index 84a5e5d..7adc4e0 100644
+index bc5d235..1b5602b 100644
 --- a/src/hardware/kingst-la1010/protocol.h
 +++ b/src/hardware/kingst-la1010/protocol.h
 @@ -35,7 +35,7 @@
