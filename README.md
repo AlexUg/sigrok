@@ -1,8 +1,11 @@
 # Kingst LA1010 support for Sigrok
 
-Known issues:
-1. Configuration of PWM output channels isn't provided by GUI.
-
-The directory "pwm" contains patches for enabling the support of configuration of output PWM channels in "pulseview".
-This decision is not very good, even more bad. But at this moment there is no other possibility to implement PWM channels configuration support in "pulseview".
-PWM setting (frequency or duty) is applied when corresponding channel is activated in settings in "pulseview". That is why to change settings for active PWN channel the channel must be disabled and again enabled.
+To enable Kingst LA-1010 support in libsigrok there need perform these steps:<br>
+<ol>
+  <li>get libsigrok sources (see docs for libsigrok);</li>
+  <li>copy directory 'kingst-la1010' to subdirectory 'src/hardware' in libsigrok source directory;</li>
+  <li>apply patches 'Makefile.am.patch' and 'configure.ac.patch' to corresponding files in libsigrok source directory;</li>
+  <li>build libsigrok (see docs for libsigrok);</li>
+  <li>use Python script 'sigrok-fwextract-kingstvis.py' for extracting firmwares from 'LA1010.dll'</li>
+  <li>copy firmwares to directory '~/.local/share/sigrok-firmware/'.</li>
+</ol>
