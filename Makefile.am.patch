@@ -1,8 +1,34 @@
 diff --git a/Makefile.am b/Makefile.am
-index 2ff1ee0..3331623 100644
+index 148de0ff..ead09d8a 100644
 --- a/Makefile.am
 +++ b/Makefile.am
-@@ -384,6 +384,12 @@ src_libdrivers_la_SOURCES += \
+@@ -146,20 +146,19 @@ endif
+ 
+ # Hardware (DMM chip parsers)
+ libsigrok_la_SOURCES += \
+-	src/dmm/asycii.c \
+-	src/dmm/bm25x.c \
+-	src/dmm/dtm0660.c \
+-	src/dmm/eev121gw.c \
+ 	src/dmm/es519xx.c \
+ 	src/dmm/fs9721.c \
+ 	src/dmm/fs9922.c \
+ 	src/dmm/m2110.c \
+ 	src/dmm/metex14.c \
+-	src/dmm/ms8250d.c \
++	src/dmm/asycii.c \
+ 	src/dmm/rs9lcd.c \
+-	src/dmm/ut372.c \
++	src/dmm/bm25x.c \
+ 	src/dmm/ut71x.c \
++	src/dmm/ut372.c \
+ 	src/dmm/vc870.c \
++	src/dmm/dtm0660.c \
++	src/dmm/ms8250d.c \
+ 	src/dmm/vc96.c
+ 
+ # Hardware (LCR chip parsers)
+@@ -407,6 +406,12 @@ src_libdrivers_la_SOURCES += \
  	src/hardware/kern-scale/protocol.c \
  	src/hardware/kern-scale/api.c
  endif
