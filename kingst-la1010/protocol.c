@@ -997,13 +997,14 @@ static int control_in(libusb_device_handle * handle,
 											uint8_t * data,
 											uint16_t size) {
 	int actual_length = 0;
+  uint8_t empty_data[1] = {0};
 
 	actual_length = libusb_control_transfer(handle,
 																					LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR,
 																					request,
 																					value,
 																					0,
-																					data,
+																					data == NULL ? empty_data : data,
 																					size,
 																					USB_TIMEOUT);
 	if (actual_length < 0) {
@@ -1025,13 +1026,14 @@ int control_out(libusb_device_handle * handle,
 								uint8_t * data,
 								uint16_t size) {
 	int actual_length = 0;
+	uint8_t empty_data[1] = {0};
 
 	actual_length = libusb_control_transfer(handle,
 																					LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR,
 																					request,
 																					value,
 																					0,
-																					data,
+																					data == NULL ? empty_data : data,
 																					size,
 																					USB_TIMEOUT);
 	if (actual_length < 0) {
@@ -1076,7 +1078,7 @@ int upload_bindata_sync(libusb_device_handle * handle, uint8_t * bindata, int si
 	}
 	err = libusb_bulk_transfer(handle,
 														 0x01,
-														 NULL,
+														 &data_len, // fake buffer for 0-sized transfer (passing NULL may be not working in some systems)
 														 0,
 														 &actual_len,
 														 100
