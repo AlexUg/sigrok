@@ -203,7 +203,12 @@ int kingst_la1010_acquisition_stop(const struct sr_dev_inst *sdi) {
 	struct sr_usb_dev_inst *usb;
 	struct dev_context *devc;
 
+	sr_dbg("kingst_la1010_acquisition_stop(): stop requested");
 	usb = sdi->conn;
+	devc = sdi->priv;
+
+  devc->acq_aborted = TRUE;
+
 	/*
 	 * There are need send request to stop sampling.
 	 */
@@ -212,13 +217,16 @@ int kingst_la1010_acquisition_stop(const struct sr_dev_inst *sdi) {
 		sr_err("kingst_la1010_acquisition_stop(): Stop sampling error %d. libusb err: %s",
 					 ret, libusb_error_name(ret));
 
-	devc = sdi->priv;
-	devc->acq_aborted = TRUE;
-
-	for (i = devc->num_transfers - 1; i >= 0; i--) {
-		if (devc->transfers[i])
-			libusb_cancel_transfer(devc->transfers[i]);
-	}
+  sr_dbg("dev_acquisition_stop(): cancel %d transfers", devc->num_transfers);
+  for (i = devc->num_transfers - 1; i >= 0; i--) {
+    if (devc->transfers[i]) {
+      ret = libusb_cancel_transfer(devc->transfers[i]);
+      if (ret != LIBUSB_ERROR_NOT_FOUND) {
+          sr_err("dev_acquisition_stop(): cancel %d transfer error %d. libusb err: %s",
+                     i, ret, libusb_error_name(ret));
+      }
+    }
+  }
 
 	return ret;
 }
@@ -758,6 +766,7 @@ receive_transfer(struct libusb_transfer * transfer) {
 
 	switch (transfer->status) {
 	case LIBUSB_TRANSFER_NO_DEVICE:
+	  sr_err("receive_transfer(): no device");
 		kingst_la1010_acquisition_stop(sdi);
 		free_transfer(transfer);
 		return;
@@ -772,9 +781,11 @@ receive_transfer(struct libusb_transfer * transfer) {
 	if (transfer->actual_length == 0 || packet_has_error) {
 		devc->empty_transfer_count++;
 		if (devc->empty_transfer_count > MAX_EMPTY_TRANSFERS) {
+		  sr_err("receive_transfer(): MAX_EMPTY_TRANSFERS exceeded");
 			kingst_la1010_acquisition_stop(sdi);
 			free_transfer(transfer);
 		} else {
+		  sr_err("receive_transfer(): resubmit transfer due error: actual_length %d, has_error %d", transfer->actual_length, packet_has_error);
 			resubmit_transfer(transfer);
 		}
 		return;
@@ -835,6 +846,7 @@ receive_transfer(struct libusb_transfer * transfer) {
 	}
 
 	if (devc->limit_samples && devc->sent_samples >= devc->limit_samples) {
+	  sr_dbg("receive_transfer(): samples limit reached %ld", devc->sent_samples);
 		kingst_la1010_acquisition_stop(sdi);
 		free_transfer(transfer);
 	} else
@@ -1078,7 +1090,7 @@ int upload_bindata_sync(libusb_device_handle * handle, uint8_t * bindata, int si
 	}
 	err = libusb_bulk_transfer(handle,
 														 0x01,
-														 &data_len, // fake buffer for 0-sized transfer (passing NULL may be not working in some systems)
+														 (unsigned char *) &data_len, // fake buffer for 0-sized transfer (passing NULL may be not working in some systems)
 														 0,
 														 &actual_len,
 														 100

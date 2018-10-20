@@ -538,10 +538,12 @@ static int config_list(uint32_t key,
 }
 
 static int dev_acquisition_start(const struct sr_dev_inst *sdi) {
+  sr_dbg("dev_acquisition_start(): start sampling");
 	return kingst_la1010_acquisition_start(sdi);
 }
 
 static int dev_acquisition_stop(struct sr_dev_inst *sdi) {
+  sr_dbg("dev_acquisition_start(): stop sampling");
 	return kingst_la1010_acquisition_stop(sdi);
 }
 
