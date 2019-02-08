@@ -876,7 +876,7 @@ int kingst_la1010_configure_channels(const struct sr_dev_inst *sdi) {
 }
 
 static unsigned int to_bytes_per_ms(unsigned int samplerate, uint8_t num_channels) {
-	unsigned long result = samplerate * num_channels * 2;
+	unsigned long result = samplerate * num_channels / 2;
 	return result / 1000;
 }
 
