@@ -112,7 +112,7 @@ int kingst_la1010_acquisition_start(const struct sr_dev_inst *sdi) {
 	timeout = get_timeout(devc);
 	usb_source_add(sdi->session, devc->ctx, timeout, kingst_la1010_receive_data, drvc);
 
-	devc->convbuffer_size = (get_buffer_size(devc) / devc->num_channels) * 16;
+	devc->convbuffer_size = (get_buffer_size(devc) / devc->num_channels) * 16 + 32;
 
 	devc->convbuffer = g_try_malloc(devc->convbuffer_size);
 
@@ -712,18 +712,11 @@ static size_t convert_sample_data(struct dev_context *devc,
 	channel_data = devc->channel_data;
 	cur_channel = devc->cur_channel;
 
-  sr_dbg("devc->num_channels %d", devc->num_channels);
-  sr_dbg("srccnt %ld", srccnt);
-  sr_dbg("destcnt %ld", destcnt);
-
 	while (srccnt--) {
 		sample = src[0] | (src[1] << 8);
 		src += 2;
 
 		channel_mask = devc->channel_masks[cur_channel];
-		sr_dbg("cur_channel %d", cur_channel);
-		sr_dbg("channel_mask %x", channel_mask);
-		sr_dbg("sample %x", sample);
 
 		for (i = 0; i < 16; ++i, sample >>= 1)
 			if (sample & 1)
@@ -731,8 +724,6 @@ static size_t convert_sample_data(struct dev_context *devc,
 
 		if (++cur_channel == devc->num_channels) {
 			cur_channel = 0;
-		}
-		if ((srccnt % devc->num_channels) == 0) {
 			if (destcnt < 16 * 2) {
 				sr_err("Conversion buffer too small! dstcnt %ld, srccnt %ld", destcnt, srccnt);
 				break;
