@@ -6,7 +6,7 @@ index d9cfde41..87de2e45 100644
  SR_DRIVER([IPDBG LA], [ipdbg-la])
  SR_DRIVER([Kecheng KC-330B], [kecheng-kc-330b], [libusb])
  SR_DRIVER([KERN scale], [kern-scale], [libserialport])
-+SR_DRIVER([Kingst LA1010], [kingst-la1010])
++SR_DRIVER([Kingst LA1010], [kingst-la1010], [libusb])
  SR_DRIVER([Korad KAxxxxP], [korad-kaxxxxp], [libserialport])
  SR_DRIVER([Lascar EL-USB], [lascar-el-usb], [libusb])
  SR_DRIVER([LeCroy LogicStudio], [lecroy-logicstudio], [libusb])

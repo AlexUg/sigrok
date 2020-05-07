@@ -24,68 +24,62 @@
 
 #include "protocol.h"
 
-
 #define USB_TIMEOUT 1000
-
 
 static void finish_acquisition(const struct sr_dev_inst *sdi);
 static void free_transfer(struct libusb_transfer *transfer);
 static void resubmit_transfer(struct libusb_transfer *transfer);
 static size_t convert_sample_data(struct dev_context *devc,
-																	uint8_t *dest,
-																	size_t destcnt,
-																	const uint8_t *src,
-																	size_t srccnt);
+									uint8_t *dest,
+									size_t destcnt,
+									const uint8_t *src,
+									size_t srccnt);
 static int command_start_acquisition(const struct sr_dev_inst *sdi);
 static int start_transfers(const struct sr_dev_inst *sdi);
 
-static unsigned int to_bytes_per_ms(unsigned int samplerate, uint8_t num_channels);
+static unsigned int to_bytes_per_ms(unsigned int samplerate,
+									uint8_t num_channels);
 static size_t get_buffer_size(struct dev_context *devc);
 static unsigned int get_number_of_transfers(struct dev_context *devc);
 static unsigned int get_timeout(struct dev_context *devc);
 
 static void LIBUSB_CALL
 abort_acquisition_request_cb(struct libusb_transfer *transfer);
-void LIBUSB_CALL
-upload_transfer_complete_cb (struct libusb_transfer * xfr);
+//void LIBUSB_CALL
+//upload_transfer_complete_cb(struct libusb_transfer *xfr);
 static void LIBUSB_CALL
-receive_transfer(struct libusb_transfer * transfer);
+receive_transfer(struct libusb_transfer *transfer);
 
+static int control_in(libusb_device_handle *handle,
+						uint8_t request,
+						uint16_t value,
+						uint8_t *data,
+						uint16_t size);
 
-static int control_in (libusb_device_handle * handle,
-											 uint8_t request,
-											 uint16_t value,
-											 uint8_t *data,
-											 uint16_t size);
-static int control_out (libusb_device_handle * handle,
-												uint8_t request,
-												uint16_t value,
-												uint8_t *data,
-												uint16_t size);
-//static int upload_bindata (libusb_device_handle * handle,
-//							uint8_t *data,
-//							int size);
-static int upload_bindata_sync (libusb_device_handle * handle,
-																uint8_t *data,
-																int size,
-																int trans_size);
+static int control_out(libusb_device_handle *handle,
+						uint8_t request,
+						uint16_t value,
+						uint8_t *data,
+						uint16_t size);
 
+static int upload_bindata_sync(libusb_device_handle *handle,
+								uint8_t *data,
+								int size,
+								int trans_size);
 
-int kingst_la1010_receive_data(int fd, int revents, void *cb_data)
-{
+int kingst_la1010_receive_data(int fd, int revents, void *cb_data) {
 	struct timeval tv;
 	struct drv_context *drvc;
 
-	(void)fd;
+	(void) fd;
 	(void) revents;
 
-	drvc = (struct drv_context *) cb_data;
+	drvc = (struct drv_context*) cb_data;
 	tv.tv_sec = tv.tv_usec = 0;
 	libusb_handle_events_timeout(drvc->sr_ctx->libusb_ctx, &tv);
 
 	return TRUE;
 }
-
 
 int kingst_la1010_acquisition_start(const struct sr_dev_inst *sdi) {
 	struct sr_dev_driver *di;
@@ -110,9 +104,11 @@ int kingst_la1010_acquisition_start(const struct sr_dev_inst *sdi) {
 	}
 
 	timeout = get_timeout(devc);
-	usb_source_add(sdi->session, devc->ctx, timeout, kingst_la1010_receive_data, drvc);
+	usb_source_add(sdi->session, devc->ctx, timeout, kingst_la1010_receive_data,
+			drvc);
 
-	devc->convbuffer_size = (get_buffer_size(devc) / devc->num_channels) * 16 + 32;
+	devc->convbuffer_size = (get_buffer_size(devc) / devc->num_channels) * 16
+			+ 32;
 
 	devc->convbuffer = g_try_malloc(devc->convbuffer_size);
 
@@ -154,7 +150,8 @@ static int command_start_acquisition(const struct sr_dev_inst *sdi) {
 		return err;
 	}
 
-	err = control_out(usb->devhdl, CMD_SAMPLING_CONFIG, CMD_SAMPLING_CONFIG, NULL, 0);
+	err = control_out(usb->devhdl, CMD_SAMPLING_CONFIG, CMD_SAMPLING_CONFIG,
+			NULL, 0);
 	if (err) {
 		sr_err("Enter to sampling rate configuration mode failed.");
 		return err;
@@ -163,10 +160,8 @@ static int command_start_acquisition(const struct sr_dev_inst *sdi) {
 	division = SAMPLING_BASE_FREQUENCY / samplerate;
 
 	err = control_out(usb->devhdl,
-										CMD_CONTROL,
-										CMD_CONTROL_SAMPLE_RATE,
-										(uint8_t *) &division,
-										sizeof(division));
+	CMD_CONTROL,
+	CMD_CONTROL_SAMPLE_RATE, (uint8_t*) &division, sizeof(division));
 	if (err) {
 		sr_err("Set sample rate failed.");
 		return err;
@@ -176,7 +171,8 @@ static int command_start_acquisition(const struct sr_dev_inst *sdi) {
 	data[1] = devc->cur_channels >> 8;
 	data[2] = 0;
 	data[3] = 0;
-	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_CHAN_SELECT, data, 4);
+	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_CHAN_SELECT, data,
+			4);
 	if (err) {
 		sr_err("Set channel mask failed.");
 		return err;
@@ -189,7 +185,8 @@ static int command_start_acquisition(const struct sr_dev_inst *sdi) {
 		return err;
 	}
 
-	err = control_out(usb->devhdl, CMD_SAMPLING_START, CMD_SAMPLING_START, NULL, 0);
+	err = control_out(usb->devhdl, CMD_SAMPLING_START, CMD_SAMPLING_START, NULL,
+			0);
 	if (err) {
 		sr_err("Star sampling failed.");
 		return err;
@@ -207,26 +204,28 @@ int kingst_la1010_acquisition_stop(const struct sr_dev_inst *sdi) {
 	usb = sdi->conn;
 	devc = sdi->priv;
 
-  devc->acq_aborted = TRUE;
+	devc->acq_aborted = TRUE;
 
 	/*
 	 * There are need send request to stop sampling.
 	 */
 	ret = kingst_la1010_abort_acquisition_request(usb->devhdl);
 	if (ret)
-		sr_err("kingst_la1010_acquisition_stop(): Stop sampling error %d. libusb err: %s",
-					 ret, libusb_error_name(ret));
+		sr_err(
+				"kingst_la1010_acquisition_stop(): Stop sampling error %d. libusb err: %s",
+				ret, libusb_error_name(ret));
 
-  sr_dbg("dev_acquisition_stop(): cancel %d transfers", devc->num_transfers);
-  for (i = devc->num_transfers - 1; i >= 0; i--) {
-    if (devc->transfers[i]) {
-      ret = libusb_cancel_transfer(devc->transfers[i]);
-      if (ret != LIBUSB_ERROR_NOT_FOUND) {
-          sr_err("dev_acquisition_stop(): cancel %d transfer error %d. libusb err: %s",
-                     i, ret, libusb_error_name(ret));
-      }
-    }
-  }
+	sr_dbg("kingst_la1010_acquisition_stop(): cancel %d transfers", devc->num_transfers);
+	for (i = devc->num_transfers - 1; i >= 0; i--) {
+		if (devc->transfers[i]) {
+			ret = libusb_cancel_transfer(devc->transfers[i]);
+			if (ret != LIBUSB_ERROR_NOT_FOUND) {
+				sr_err(
+						"kingst_la1010_acquisition_stop(): cancel %d transfer error %d. libusb err: %s",
+						i, ret, libusb_error_name(ret));
+			}
+		}
+	}
 
 	return ret;
 }
@@ -236,42 +235,33 @@ int kingst_la1010_acquisition_stop(const struct sr_dev_inst *sdi) {
  * If FX firmware was loaded the cypress returns 0xFB04 (may be firmware version?).
  */
 int kingst_la1010_has_fx_firmware(struct libusb_device_handle *hdl) {
-	union fx_status status;
 	int err;
+	struct libusb_device * dev;
+ 	struct libusb_config_descriptor * config;
 
-	status.code = -1;
-	err = control_in(hdl,
-	CMD_STATUS,
-	CMD_STATUS_FX_STATUS, status.bytes, sizeof(status.bytes));
+	dev = libusb_get_device(hdl);
+	err = libusb_get_active_config_descriptor(dev, &config);
 	if (err) {
+		sr_err(
+				"kingst_la1010_has_fx_firmware(): get active usb config descriptor failed. libusb err: %s",
+				libusb_error_name(err));
 		return err;
 	}
-
-	if (status.code != 0xFB04) {
-		return status.code;
+	if (config->bNumInterfaces == 1) {
+		if (config->interface->altsetting->bNumEndpoints == 2) {
+			return SR_OK;
+		} else {
+			sr_err(
+					"kingst_la1010_has_fx_firmware(): iface->altsetting->bNumEndpoints: %d",
+					config->interface->altsetting->bNumEndpoints);
+		}
+	} else {
+		sr_err(
+				"kingst_la1010_has_fx_firmware(): config->bNumInterfaces: %d",
+				config->bNumInterfaces);
 	}
-	return SR_OK;
-}
 
-/*
- * Check if the bitstream was uploaded to spartan.
- * After upload bitstream the device returns 0x00000000.
- * But by next initialization (device wasn't is powered off) the device returns different response.
- */
-int kingst_la1010_has_spartan_firmware(struct libusb_device_handle *hdl) {
-	union spartan_status status;
-	int err;
-
-	status.code = -1;
-	err = control_in(hdl,
-										CMD_CONTROL,
-										CMD_CONTROL_START,
-										status.bytes,
-										sizeof(status.bytes));
-	if (err)
-		return err;
-
-	return status.code;
+	return SR_ERR;
 }
 
 /*
@@ -282,62 +272,197 @@ int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 	struct dev_context *devc;
 	struct sr_usb_dev_inst *usb;
 	struct libusb_device *usbdev;
-	union spartan_status status;
-	uint8_t *bindata;
+	union fx_status fx_status;
+	union spartan_status spartan_status;
+	uint8_t *bindata, verify_data[32];
 	uint32_t binsize;
 	int err, i;
 
+	usb = sdi->conn;
 	drvc = sdi->driver->context;
 	devc = sdi->priv;
 
+	err = control_in(usb->devhdl,
+						CMD_STATUS,
+						CMD_STATUS_USB_STATUS,
+						fx_status.bytes,
+						4);
+	if (err) {
+		sr_err(
+				"kingst_la1010_upload_spartan_firmware(): check Cypress status failed. libusb err: %s",
+				libusb_error_name(err));
+		return err;
+	}
+
+	if (fx_status.code[0] != 0xFFFFFFFF) {
+		sr_err(
+				"kingst_la1010_upload_spartan_firmware(): wrong Cypress status: %x",
+				fx_status.code[0]);
+		return SR_ERR;
+	}
+
+	err = control_in(usb->devhdl,
+						CMD_STATUS,
+						CMD_STATUS_FX_STATUS,
+						fx_status.bytes,
+						sizeof(fx_status.bytes));
+	if (err) {
+		sr_err(
+				"kingst_la1010_upload_spartan_firmware(): check Cypress FW status failed. libusb err: %s",
+				libusb_error_name(err));
+		return err;
+	}
+
+	if ((fx_status.bytes[0] ^ fx_status.bytes[1]) != 0xFF) {
+		sr_err(
+				"kingst_la1010_upload_spartan_firmware(): wrong Cypress FW status: %x, %x",
+				fx_status.bytes[0],
+				fx_status.bytes[1]);
+		return SR_ERR;
+	}
+
 	bindata = sr_resource_load(drvc->sr_ctx,
-														 SR_RESOURCE_FIRMWARE,
-														 devc->profile->spartan_firmware,
-														 (size_t *) &binsize,
-														 0x020000);
+								SR_RESOURCE_FIRMWARE,
+								devc->profile->spartan_firmware,
+								(size_t*) &binsize,
+								0x020000);
 	if (!bindata) {
 		return SR_ERR_MALLOC;
 	}
 
-	usb = sdi->conn;
-	for (i = 0; i < 3; i++) {
-		err = kingst_la1010_has_fx_firmware(usb->devhdl);
-		if (err)
-			return err;
-	}
-
 	err = control_out(usb->devhdl,
-										CMD_SPARTAN_UPLOAD,
-										0,
-										(uint8_t *) &binsize,
-										sizeof(binsize));
-	if (err)
+						CMD_SPARTAN_UPLOAD,
+						0,
+						(uint8_t*) &binsize,
+						sizeof(binsize));
+	if (err) {
+		sr_err(
+				"kingst_la1010_upload_spartan_firmware(): upload Spartan firmware failed. libusb err: %s",
+				libusb_error_name(err));
 		return err;
+	}
 
 	usbdev = libusb_get_device(usb->devhdl);
 	if (usbdev) {
-		i = libusb_get_max_packet_size(usbdev, 0x01);
+		i = libusb_get_max_packet_size(usbdev, USB_UPLOAD_DATA_EP);
 
 		sr_dbg("Upload Spartan firmware using packet size %d", i);
 
 		err = upload_bindata_sync(usb->devhdl, bindata, binsize, i);
-		if (err)
+		g_free(bindata);
+		if (err) {
+			sr_err(
+					"kingst_la1010_upload_spartan_firmware(): upload Spartan firmware failed. libusb err: %s",
+					libusb_error_name(err));
 			return err;
+		}
+
+		g_usleep(100 * 1000);
 
 		err = control_in(usb->devhdl,
-										 CMD_CONTROL,
-										 CMD_CONTROL_START,
-										 status.bytes,
-										 sizeof(status.bytes));
-		if (err)
+							CMD_SPARTAN_UPLOAD,
+							0,
+							spartan_status.bytes,
+							1);
+		if (err) {
+			sr_err(
+					"kingst_la1010_upload_spartan_firmware(): check Spartan status failed. libusb err: %s",
+					libusb_error_name(err));
 			return err;
+		}
 
-		if (status.code) {
-			sr_err("Check Spartan returns wrong status: %d", status.code);
+		if (spartan_status.bytes[0]) {
+			sr_err("Check Spartan returns wrong status: %d", spartan_status.bytes[0]);
 			return SR_ERR;
 		}
+
+		g_usleep(30 * 1000);
+
+		err = control_out(usb->devhdl,
+							CMD_10,
+							1,
+							NULL,
+							0);
+		if (err) {
+			sr_err(
+					"kingst_la1010_upload_spartan_firmware(): start Spartan failed. libusb err: %s",
+					libusb_error_name(err));
+			return err;
+		}
+
+		g_usleep(40 * 1000);
+
+		err = control_in(usb->devhdl,
+							CMD_CONTROL,
+							0,
+							spartan_status.bytes,
+							2);
+		if (err) {
+			sr_err(
+					"kingst_la1010_upload_spartan_firmware(): check Spartan status failed. libusb err: %s",
+					libusb_error_name(err));
+			return err;
+		}
+
+		/// GetVerifyData
+		verify_data[0] = 0xA3;
+		verify_data[1] = 0x09;
+		verify_data[2] = 0xC9;
+		err = control_out(usb->devhdl,
+							CMD_60,
+							0,
+							verify_data,
+							11);
+		if (err) {
+			sr_err(
+					"kingst_la1010_upload_spartan_firmware(): GetVerifyData out failed. libusb err: %s",
+					libusb_error_name(err));
+			return err;
+		}
+		err = control_in(usb->devhdl,
+							CMD_60,
+							0,
+							verify_data,
+							18);
+		if (err) {
+			sr_err(
+					"kingst_la1010_upload_spartan_firmware(): GetVerifyData in failed. libusb err: %s",
+					libusb_error_name(err));
+			return err;
+		}
+		/// GetVerifyData end
+
+		/// GetDeviceID
+		verify_data[0] = 0xA3;
+		verify_data[1] = 0x01;
+		verify_data[2] = 0xCA;
+		err = control_out(usb->devhdl,
+							CMD_60,
+							0,
+							verify_data,
+							3);
+		if (err) {
+			sr_err(
+					"kingst_la1010_upload_spartan_firmware(): GetVerifyData out failed. libusb err: %s",
+					libusb_error_name(err));
+			return err;
+		}
+		err = control_in(usb->devhdl,
+							CMD_60,
+							0,
+							verify_data,
+							12);
+		if (err) {
+			sr_err(
+					"kingst_la1010_upload_spartan_firmware(): GetVerifyData in failed. libusb err: %s",
+					libusb_error_name(err));
+			return err;
+		}
+		/// GetDeviceID end
+
 	} else {
-		sr_err("Upload Spartan failed. Can't get usb device struct by device handle");
+		sr_err(
+				"Upload Spartan failed. Can't get usb device struct by device handle");
 		return SR_ERR;
 	}
 
@@ -347,33 +472,8 @@ int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 /*
  * Init the device for usage.
  */
-int kingst_la1010_init_spartan(struct libusb_device_handle * handle) {
+int kingst_la1010_init_spartan(struct libusb_device_handle *handle) {
 	int err;
-	uint8_t dev_data[20] = { 0xA3, 0x09, 0xC9, 0x11, 0x52, 0x78, 0xAB, 0x7C, 0x06, 0x4E,
-														0x76, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-
-	/*
-	 * I don't understand next three (CMD_10, CMD_60) control request.
-	 */
-	err = control_out(handle, CMD_10, 0xFF, NULL, 0);
-	if (err)
-		return err;
-
-	err = control_out(handle, CMD_60, 0, dev_data, 11);
-	if (err)
-		return err;
-
-	err = control_in(handle, CMD_60, 0, dev_data, 20);
-	if (err)
-		return err;
-
-	sr_dbg("CMD_60 responce (part1): 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-					dev_data[0], dev_data[1], dev_data[2], dev_data[3], dev_data[4],
-					dev_data[5], dev_data[6], dev_data[7], dev_data[8], dev_data[9]);
-	sr_dbg("CMD_60 responce (part1): 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-					dev_data[10], dev_data[11], dev_data[12], dev_data[13],
-					dev_data[14], dev_data[15], dev_data[16], dev_data[17],
-					dev_data[18], dev_data[19]);
 
 	/*
 	 * Configure voltage threshold.
@@ -396,7 +496,8 @@ int kingst_la1010_init_spartan(struct libusb_device_handle * handle) {
  * Configure threshold levels.
  * Available from -4.0 to 4.0.
  */
-int kingst_la1010_set_logic_level(struct libusb_device_handle *hdl, double level) {
+int kingst_la1010_set_logic_level(struct libusb_device_handle *hdl,
+		double level) {
 	uint32_t data;
 	int err;
 
@@ -431,10 +532,10 @@ int kingst_la1010_set_logic_level(struct libusb_device_handle *hdl, double level
 	}
 
 	err = control_out(hdl,
-										CMD_CONTROL,
-										CMD_CONTROL_LOG_LEVEL,
-										(uint8_t *) &data,
-										sizeof(data));
+						CMD_CONTROL,
+						CMD_CONTROL_LOG_LEVEL,
+						(uint8_t*) &data,
+						sizeof(data));
 	if (err)
 		return err;
 
@@ -448,21 +549,21 @@ int kingst_la1010_set_logic_level(struct libusb_device_handle *hdl, double level
  * Frequency == 0 -- power off PWM channel.
  */
 int kingst_la1010_configure_pwm(struct libusb_device_handle *hdl,
-																uint64_t pwm1_freq,
-																uint64_t pwm1_duty,
-																uint64_t pwm2_freq,
-																uint64_t pwm2_duty) {
+								uint64_t pwm1_freq,
+								uint64_t pwm1_duty,
+								uint64_t pwm2_freq,
+								uint64_t pwm2_duty) {
 	uint32_t data[2];
 	int err;
 
 	if (pwm1_duty > 100) {
 		sr_err("Wrong PWM1 duty ratio, given %ld, but only 0 .. 100 allowed",
-					 pwm1_duty);
+				pwm1_duty);
 		pwm1_duty = 50;
 	}
 	if (pwm2_duty > 100) {
 		sr_err("Wrong PWM2 duty ratio, given %ld, but only 0 .. 100 allowed",
-					 pwm2_duty);
+				pwm2_duty);
 		pwm2_duty = 50;
 	}
 
@@ -483,24 +584,24 @@ int kingst_la1010_configure_pwm(struct libusb_device_handle *hdl,
 	}
 
 	data[0] = 0x00;
-	err = control_out(hdl, CMD_CONTROL, CMD_CONTROL_PWM, (uint8_t *) &data, 1);
+	err = control_out(hdl, CMD_CONTROL, CMD_CONTROL_PWM, (uint8_t*) &data, 1);
 	if (err)
 		return err;
 
 	data[0] = pwm1_freq;
 	data[1] = pwm1_duty;
-	err = control_out(hdl, CMD_CONTROL, CMD_CONTROL_PWM_1, (uint8_t *) &data, sizeof(data));
+	err = control_out(hdl, CMD_CONTROL, CMD_CONTROL_PWM_1, (uint8_t*) &data, sizeof(data));
 	if (err)
 		return err;
 
 	data[0] = pwm2_freq;
 	data[1] = pwm2_duty;
-	err = control_out(hdl, CMD_CONTROL, CMD_CONTROL_PWM_2, (uint8_t *) &data, sizeof(data));
+	err = control_out(hdl, CMD_CONTROL, CMD_CONTROL_PWM_2, (uint8_t*) &data, sizeof(data));
 	if (err)
 		return err;
 
 	data[0] = 0x01;
-	err = control_out(hdl, CMD_CONTROL, CMD_CONTROL_PWM, (uint8_t *) &data, 1);
+	err = control_out(hdl, CMD_CONTROL, CMD_CONTROL_PWM, (uint8_t*) &data, 1);
 	if (err)
 		return err;
 
@@ -524,7 +625,8 @@ int kingst_la1010_dev_open(const struct sr_dev_inst *sdi) {
 
 	device_count = libusb_get_device_list(drvc->sr_ctx->libusb_ctx, &devlist);
 	if (device_count < 0) {
-		sr_err("Failed to get device list: %s.", libusb_error_name(device_count));
+		sr_err("Failed to get device list: %s.",
+				libusb_error_name(device_count));
 		return SR_ERR;
 	}
 
@@ -563,15 +665,17 @@ int kingst_la1010_dev_open(const struct sr_dev_inst *sdi) {
 			if (libusb_kernel_driver_active(usb->devhdl, USB_INTERFACE) == 1) {
 				if ((ret = libusb_detach_kernel_driver(usb->devhdl,
 				USB_INTERFACE)) < 0) {
-					sr_err("Failed to detach kernel driver: %s.", libusb_error_name(ret));
+					sr_err("Failed to detach kernel driver: %s.",
+							libusb_error_name(ret));
 					ret = SR_ERR;
 					break;
 				}
 			}
 		}
 
-		sr_info("Opened device on %d.%d (logical) / %s (physical), " "interface %d",
-						usb->bus, usb->address, connection_id, USB_INTERFACE);
+		sr_info(
+				"Opened device on %d.%d (logical) / %s (physical), " "interface %d",
+				usb->bus, usb->address, connection_id, USB_INTERFACE);
 
 		ret = SR_OK;
 
@@ -588,7 +692,7 @@ abort_acquisition_request_cb(struct libusb_transfer *transfer) {
 	libusb_free_transfer(transfer);
 }
 
-int kingst_la1010_abort_acquisition_request(libusb_device_handle * handle) {
+int kingst_la1010_abort_acquisition_request(libusb_device_handle *handle) {
 	struct libusb_transfer *transfer;
 	unsigned char *buffer;
 	int ret;
@@ -605,19 +709,19 @@ int kingst_la1010_abort_acquisition_request(libusb_device_handle * handle) {
 	}
 
 	libusb_fill_control_setup(buffer,
-														LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR,
-														CMD_CONTROL,
-														CMD_CONTROL_START,
-														0,
-														1);
+								LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR,
+								CMD_CONTROL,
+								CMD_CONTROL_START,
+								0,
+								1);
 	buffer[LIBUSB_CONTROL_SETUP_SIZE] = 0;
 
 	libusb_fill_control_transfer(transfer,
-																handle,
-																buffer,
-																abort_acquisition_request_cb,
-																NULL,
-																1000);
+									handle,
+									buffer,
+									abort_acquisition_request_cb,
+									NULL,
+									1000);
 	transfer->flags = LIBUSB_TRANSFER_FREE_BUFFER;
 
 	ret = libusb_submit_transfer(transfer);
@@ -698,10 +802,10 @@ static void resubmit_transfer(struct libusb_transfer *transfer) {
  * Sampling data same as Saleae Logic16.
  */
 static size_t convert_sample_data(struct dev_context *devc,
-																	uint8_t *dest,
-																	size_t destcnt,
-																	const uint8_t *src,
-																	size_t srccnt) {
+									uint8_t *dest,
+									size_t destcnt,
+									const uint8_t *src,
+									size_t srccnt) {
 	uint16_t *channel_data;
 	int i, cur_channel;
 	size_t ret = 0;
@@ -725,7 +829,8 @@ static size_t convert_sample_data(struct dev_context *devc,
 		if (++cur_channel == devc->num_channels) {
 			cur_channel = 0;
 			if (destcnt < 16 * 2) {
-				sr_err("Conversion buffer too small! dstcnt %ld, srccnt %ld", destcnt, srccnt);
+				sr_err("Conversion buffer too small! dstcnt %ld, srccnt %ld",
+						destcnt, srccnt);
 				break;
 			}
 			memcpy(dest, channel_data, 16 * 2);
@@ -742,7 +847,7 @@ static size_t convert_sample_data(struct dev_context *devc,
 }
 
 static void LIBUSB_CALL
-receive_transfer(struct libusb_transfer * transfer) {
+receive_transfer(struct libusb_transfer *transfer) {
 	struct sr_dev_inst *sdi;
 	struct dev_context *devc;
 	gboolean packet_has_error = FALSE;
@@ -766,7 +871,7 @@ receive_transfer(struct libusb_transfer * transfer) {
 
 	switch (transfer->status) {
 	case LIBUSB_TRANSFER_NO_DEVICE:
-	  sr_err("receive_transfer(): no device");
+		sr_err("receive_transfer(): no device");
 		kingst_la1010_acquisition_stop(sdi);
 		free_transfer(transfer);
 		return;
@@ -781,11 +886,13 @@ receive_transfer(struct libusb_transfer * transfer) {
 	if (transfer->actual_length == 0 || packet_has_error) {
 		devc->empty_transfer_count++;
 		if (devc->empty_transfer_count > MAX_EMPTY_TRANSFERS) {
-		  sr_err("receive_transfer(): MAX_EMPTY_TRANSFERS exceeded");
+			sr_err("receive_transfer(): MAX_EMPTY_TRANSFERS exceeded");
 			kingst_la1010_acquisition_stop(sdi);
 			free_transfer(transfer);
 		} else {
-		  sr_err("receive_transfer(): resubmit transfer due error: actual_length %d, has_error %d", transfer->actual_length, packet_has_error);
+			sr_err(
+					"receive_transfer(): resubmit transfer due error: actual_length %d, has_error %d",
+					transfer->actual_length, packet_has_error);
 			resubmit_transfer(transfer);
 		}
 		return;
@@ -800,10 +907,10 @@ receive_transfer(struct libusb_transfer * transfer) {
 	packet.payload = &logic;
 
 	new_samples = convert_sample_data(devc,
-																		devc->convbuffer,
-																		devc->convbuffer_size,
-																		(uint8_t *) transfer->buffer,
-																		transfer->actual_length);
+										devc->convbuffer,
+										devc->convbuffer_size,
+										(uint8_t*) transfer->buffer,
+										transfer->actual_length);
 	if (new_samples == 0) {
 		if (transfer->actual_length) {
 			sr_err("receive_transfer(): convert data failed");
@@ -818,23 +925,23 @@ receive_transfer(struct libusb_transfer * transfer) {
 
 	if (devc->trigger_fired) {
 		if (devc->limit_samples
-				&& new_samples > devc->limit_samples - devc->sent_samples)
+				&& (new_samples > devc->limit_samples - devc->sent_samples))
 			new_samples = devc->limit_samples - devc->sent_samples;
 		logic.length = new_samples * 2;
 		sr_session_send(sdi, &packet);
 		devc->sent_samples += new_samples;
 	} else {
 		trigger_offset = soft_trigger_logic_check(devc->stl,
-																							devc->convbuffer,
-																							new_samples * 2,
-																							&pre_trigger_samples);
+													devc->convbuffer,
+													new_samples * 2,
+													&pre_trigger_samples);
 		if (trigger_offset > -1) {
 			devc->sent_samples += pre_trigger_samples;
 			packet.type = SR_DF_LOGIC;
 			packet.payload = &logic;
 			num_samples = new_samples - trigger_offset;
 			if (devc->limit_samples
-					&& num_samples > devc->limit_samples - devc->sent_samples)
+					&& (num_samples > devc->limit_samples - devc->sent_samples))
 				num_samples = devc->limit_samples - devc->sent_samples;
 			logic.length = num_samples * 2;
 			logic.data = devc->convbuffer + trigger_offset * 2;
@@ -845,8 +952,9 @@ receive_transfer(struct libusb_transfer * transfer) {
 		}
 	}
 
-	if (devc->limit_samples && devc->sent_samples >= devc->limit_samples) {
-	  sr_dbg("receive_transfer(): samples limit reached %ld", devc->sent_samples);
+	if (devc->limit_samples && (devc->sent_samples >= devc->limit_samples)) {
+		sr_dbg("receive_transfer(): samples limit reached %ld",
+				devc->sent_samples);
 		kingst_la1010_acquisition_stop(sdi);
 		free_transfer(transfer);
 	} else
@@ -863,7 +971,7 @@ int kingst_la1010_configure_channels(const struct sr_dev_inst *sdi) {
 	devc->num_channels = 0;
 	devc->cur_channels = 0;
 	for (l = sdi->channels; l; l = l->next) {
-		ch = (struct sr_channel *) l->data;
+		ch = (struct sr_channel*) l->data;
 		if (ch->enabled == FALSE)
 			continue;
 
@@ -908,7 +1016,8 @@ static unsigned int get_timeout(struct dev_context *devc) {
 	unsigned int timeout;
 
 	total_size = get_buffer_size(devc) * get_number_of_transfers(devc);
-	timeout = total_size / to_bytes_per_ms(devc->cur_samplerate, devc->num_channels);
+	timeout = total_size
+			/ to_bytes_per_ms(devc->cur_samplerate, devc->num_channels);
 	return timeout + timeout / 4; /* Leave a headroom of 25% percent. */
 }
 
@@ -949,10 +1058,12 @@ static int start_transfers(const struct sr_dev_inst *sdi) {
 	sr_dbg("Number of channels: %d", devc->num_channels);
 
 	num_transfers = get_number_of_transfers(devc);
-	sr_dbg("Number transfers was calculated: %d (0x%X)", num_transfers, num_transfers);
+	sr_dbg("Number transfers was calculated: %d (0x%X)", num_transfers,
+			num_transfers);
 
 	size = get_buffer_size(devc);
-	sr_dbg("Buffer size for each transfer was calculated: %ld (0x%lX)", size, size);
+	sr_dbg("Buffer size for each transfer was calculated: %ld (0x%lX)", size,
+			size);
 
 	devc->submitted_transfers = 0;
 
@@ -963,7 +1074,8 @@ static int start_transfers(const struct sr_dev_inst *sdi) {
 	}
 
 	timeout = get_timeout(devc);
-	sr_dbg("Timeout for each transfer was calculated: %d (0x%X)", timeout, timeout);
+	sr_dbg("Timeout for each transfer was calculated: %d (0x%X)", timeout,
+			timeout);
 
 	for (i = 0; i < num_transfers; i++) {
 		if (!(buf = g_try_malloc(size))) {
@@ -971,24 +1083,20 @@ static int start_transfers(const struct sr_dev_inst *sdi) {
 			return SR_ERR_MALLOC;
 		}
 		transfer = libusb_alloc_transfer(0);
-		libusb_fill_bulk_transfer(transfer,
-															usb->devhdl,
-															USB_SAMPLING_DATA_EP,
-															buf,
-															size,
-															receive_transfer,
-															(void *) sdi,
-															timeout);
+		libusb_fill_bulk_transfer(transfer, usb->devhdl,
+		USB_SAMPLING_DATA_EP, buf, size, receive_transfer, (void*) sdi,
+				timeout);
 
 		if ((ret = libusb_submit_transfer(transfer)) != 0) {
 			libusb_free_transfer(transfer);
 			g_free(buf);
 			if (i == 0) {
-				sr_err("Failed to submit transfer: %s.", libusb_error_name(ret));
+				sr_err("Failed to submit transfer: %s.",
+						libusb_error_name(ret));
 				kingst_la1010_acquisition_stop(sdi);
 				return SR_ERR;
 			} else {
-					break;
+				break;
 			}
 		}
 		devc->transfers[i] = transfer;
@@ -996,72 +1104,74 @@ static int start_transfers(const struct sr_dev_inst *sdi) {
 	}
 
 	devc->num_transfers = i;
-	sr_info("%d transfers was submited: data size 0x%lx, timeout %d", devc->num_transfers, size, timeout);
+	sr_info("%d transfers was submited: data size 0x%lx, timeout %d",
+			devc->num_transfers, size, timeout);
 
 	std_session_send_df_header(sdi);
 
 	return SR_OK;
 }
 
-static int control_in(libusb_device_handle * handle,
-											uint8_t request,
-											uint16_t value,
-											uint8_t * data,
-											uint16_t size) {
+static int control_in(libusb_device_handle *handle,
+						uint8_t request,
+						uint16_t value,
+						uint8_t *data,
+						uint16_t size) {
 	int actual_length = 0;
-  uint8_t empty_data[1] = {0};
+	uint8_t empty_data[1] = { 0 };
 
 	actual_length = libusb_control_transfer(handle,
-																					LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR,
-																					request,
-																					value,
-																					0,
-																					data == NULL ? empty_data : data,
-																					size,
-																					USB_TIMEOUT);
+												LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR,
+												request,
+												value,
+												0,
+												data == NULL ? empty_data : data,
+												size,
+												USB_TIMEOUT);
 	if (actual_length < 0) {
 		sr_err("Failed to send 'control in' request to device: %s.",
-					 libusb_error_name(actual_length));
+				libusb_error_name(actual_length));
 		return actual_length;
 	} else if (actual_length != size) {
-		sr_err("Wrong response size for 'control in' request: expected %d given %d.",
-					 size, actual_length);
+		sr_err(
+				"Wrong response size for 'control in' request: expected %d given %d.",
+				size, actual_length);
 		return SR_ERR;
 	}
 
 	return SR_OK;
 }
 
-int control_out(libusb_device_handle * handle,
-								uint8_t request,
-								uint16_t value,
-								uint8_t * data,
-								uint16_t size) {
+int control_out(libusb_device_handle *handle,
+				uint8_t request,
+				uint16_t value,
+				uint8_t *data,
+				uint16_t size) {
 	int actual_length = 0;
-	uint8_t empty_data[1] = {0};
+	uint8_t empty_data[1] = { 0 };
 
 	actual_length = libusb_control_transfer(handle,
-																					LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR,
-																					request,
-																					value,
-																					0,
-																					data == NULL ? empty_data : data,
-																					size,
-																					USB_TIMEOUT);
+			LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR, request, value, 0,
+			data == NULL ? empty_data : data, size,
+			USB_TIMEOUT);
 	if (actual_length < 0) {
 		sr_err("Failed to send 'control out' request to device: %s.",
-					 libusb_error_name(actual_length));
+				libusb_error_name(actual_length));
 		return actual_length;
 	} else if (actual_length != size) {
-		sr_err("Wrong response size for 'control out' request: expected %d given %d.",
-					 size, actual_length);
+		sr_err(
+				"Wrong response size for 'control out' request: expected %d given %d.",
+				size, actual_length);
 		return SR_ERR;
 	}
 
 	return SR_OK;
 }
 
-int upload_bindata_sync(libusb_device_handle * handle, uint8_t * bindata, int size, int trans_size) {
+int upload_bindata_sync(libusb_device_handle *handle,
+						uint8_t *bindata,
+						int size,
+						int trans_size) {
 	int data_len, err, actual_len;
 
 	while (size > 0) {
@@ -1070,40 +1180,39 @@ int upload_bindata_sync(libusb_device_handle * handle, uint8_t * bindata, int si
 			data_len = trans_size;
 		}
 		err = libusb_bulk_transfer(handle,
-															 0x01,
-															 bindata,
-															 data_len,
-															 &actual_len,
-															 100
-															);
+									USB_UPLOAD_DATA_EP,
+									bindata,
+									data_len,
+									&actual_len,
+									100);
 		if (err) {
 			sr_err("Failed to upload Spartan firmware: %s.",
-						 libusb_error_name(err));
+						libusb_error_name(err));
 			return err;
 		} else if (actual_len != data_len) {
-			sr_err("Failed to upload Spartan firmware: sent %d but actual sent %d.",
-						 data_len, actual_len);
+			sr_err(
+					"Failed to upload Spartan firmware: sent %d but actual sent %d.",
+					data_len, actual_len);
 			return SR_ERR_DATA;
 		}
 		size -= actual_len;
 		bindata += actual_len;
 	}
 	err = libusb_bulk_transfer(handle,
-														 0x01,
-														 (unsigned char *) &data_len, // fake buffer for 0-sized transfer (passing NULL may be not working in some systems)
-														 0,
-														 &actual_len,
-														 100
-														);
+								USB_UPLOAD_DATA_EP,
+								(unsigned char*) &data_len, // fake buffer for 0-sized transfer (passing NULL may be not working in some systems)
+								0,
+								&actual_len,
+								100);
 	if (err) {
 		sr_err("Failed to upload Spartan firmware: %s.",
-					 libusb_error_name(err));
+					libusb_error_name(err));
 		return err;
 	}
 	return size;
 }
 
-struct dev_context * kingst_la1010_dev_new(void) {
+struct dev_context* kingst_la1010_dev_new(void) {
 	struct dev_context *devc;
 
 	devc = g_malloc0(sizeof(struct dev_context));
@@ -1118,5 +1227,4 @@ struct dev_context * kingst_la1010_dev_new(void) {
 
 	return devc;
 }
-
 

@@ -9,4 +9,4 @@ To enable Kingst LA-1010 support in libsigrok there need perform these steps:<br
   <li>use Python script 'sigrok-fwextract-kingstvis.py' for extracting firmwares from 'LA1010.dll'</li>
   <li>copy firmwares to directory '~/.local/share/sigrok-firmware/'.</li>
 </ol>
-Extracting firmwares is avalible from LA1010.ddl which are provided with old version of Kingst software (including up to 2.1.0).
+Extracting firmwares is avalible from KingsVIS executable which are provided with new version of Kingst software for Linux platform (tested on version 3.4.1).
