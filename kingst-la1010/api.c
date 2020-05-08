@@ -21,64 +21,58 @@
 #include "protocol.h"
 
 static const struct kingst_la1010_profile la1010_profile = {
-	.vid = 0x77A1,
-	.pid = 0x01A2,
-	.vendor = "Kingst",
-	.model = "LA1010",
-	.model_version = 0,
-	.fx_firmware = "LA1010.fw",
-	.spartan_firmware = "LA1010.bitstream",
-	.dev_caps = DEV_CAPS_16BIT,
-	.usb_manufacturer = NULL,
-	.usb_product = NULL
-};
+		.vid = 0x77A1,
+		.pid = 0x01A2,
+		.vendor = "Kingst",
+		.model = "LA1010",
+		.model_version = 0,
+//		.fx_firmware = "LA1010.fw",
+		.fx_firmware = 0,	// file name will be retrieved from PID
+		.spartan_firmware = "LA1010.bitstream",
+		.dev_caps = DEV_CAPS_16BIT,
+		.usb_manufacturer = NULL,
+		.usb_product = NULL };
 
-static const uint32_t scanopts[] = {
-	SR_CONF_CONN,
-};
+static const uint32_t scanopts[] = { SR_CONF_CONN, };
 
-static const uint32_t drvopts[] = {
-	SR_CONF_LOGIC_ANALYZER,
-};
+static const uint32_t drvopts[] = { SR_CONF_LOGIC_ANALYZER, };
 
 static const uint32_t devopts[] = {
-	SR_CONF_CONTINUOUS,
-	SR_CONF_LIMIT_SAMPLES | SR_CONF_GET | SR_CONF_SET,
-	SR_CONF_CONN | SR_CONF_GET,
-	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
-	SR_CONF_VOLTAGE_THRESHOLD | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
-	SR_CONF_TRIGGER_MATCH | SR_CONF_LIST, SR_CONF_CAPTURE_RATIO | SR_CONF_GET | SR_CONF_SET,
-};
+		SR_CONF_CONTINUOUS,
+		SR_CONF_LIMIT_SAMPLES | SR_CONF_GET | SR_CONF_SET, SR_CONF_CONN | SR_CONF_GET,
+		SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+		SR_CONF_VOLTAGE_THRESHOLD | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+		SR_CONF_TRIGGER_MATCH | SR_CONF_LIST,
+		SR_CONF_CAPTURE_RATIO | SR_CONF_GET | SR_CONF_SET, };
 
 static const int32_t trigger_matches[] = {
-	SR_TRIGGER_ZERO,
-	SR_TRIGGER_ONE,
-	SR_TRIGGER_RISING,
-	SR_TRIGGER_FALLING,
-	SR_TRIGGER_EDGE,
-};
+		SR_TRIGGER_ZERO,
+		SR_TRIGGER_ONE,
+		SR_TRIGGER_RISING,
+		SR_TRIGGER_FALLING,
+		SR_TRIGGER_EDGE, };
 
 static const uint64_t samplerates[] = {
-	SR_KHZ(20),
-	SR_KHZ(50),
-	SR_KHZ(100),
-	SR_KHZ(200),
-	SR_KHZ(250),
-	SR_KHZ(500),
-	SR_MHZ(1),
-	SR_MHZ(2),
-	SR_MHZ(4),
-	SR_MHZ(5),
-	SR_MHZ(8),
-	SR_MHZ(10),
-	SR_KHZ(12500),
-	SR_MHZ(16),
-	SR_MHZ(25),
-	SR_MHZ(32),
-	SR_MHZ(40),
-	SR_MHZ(50),
-	SR_MHZ(80),
-	SR_MHZ(100),
+		SR_KHZ(20),
+		SR_KHZ(50),
+		SR_KHZ(100),
+		SR_KHZ(200),
+		SR_KHZ(250),
+		SR_KHZ(500),
+		SR_MHZ(1),
+		SR_MHZ(2),
+		SR_MHZ(4),
+		SR_MHZ(5),
+		SR_MHZ(8),
+		SR_MHZ(10),
+		SR_KHZ(12500),
+		SR_MHZ(16),
+		SR_MHZ(25),
+		SR_MHZ(32),
+		SR_MHZ(40),
+		SR_MHZ(50),
+		SR_MHZ(80),
+		SR_MHZ(100),
 };
 
 /*
@@ -95,16 +89,16 @@ static const uint64_t samplerates[] = {
  * 'User Defined' not implemented
  */
 static const double thresholds[][2] = {
-	{ 1.58, 1.58 },     // TTL
-	{ 2.5, 2.5 },       // CMOS 5
-	{ 1.65, 1.65 },     // CMOS 3.3
-	{ 1.5, 1.5 },       // CMOS 3
-	{ 1.25, 1.25 },     // CMOS 2.5
-	{ 0.9, 0.9 },       // CMOS 1.8
-	{ 0.75, 0.75 },     // CMOS 1.5
-};
+		{ 1.58, 1.58 },     // TTL
+		{ 2.5, 2.5 },       // CMOS 5
+		{ 1.65, 1.65 },     // CMOS 3.3
+		{ 1.5, 1.5 },       // CMOS 3
+		{ 1.25, 1.25 },     // CMOS 2.5
+		{ 0.9, 0.9 },       // CMOS 1.8
+		{ 0.75, 0.75 },     // CMOS 1.5
+		};
 
-static GSList *scan(struct sr_dev_driver *di, GSList *options) {
+static GSList* scan(struct sr_dev_driver *di, GSList *options) {
 
 	struct drv_context *drvc;
 	struct dev_context *devc;
@@ -155,8 +149,8 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options) {
 			usb = NULL;
 			for (l = conn_devices; l; l = l->next) {
 				usb = l->data;
-				if (usb->bus == libusb_get_bus_number(devlist[i])
-						&& usb->address == libusb_get_device_address(devlist[i]))
+				if ((usb->bus == libusb_get_bus_number(devlist[i]))
+						&& (usb->address == libusb_get_device_address(devlist[i])))
 					break;
 			}
 			if (!l)
@@ -173,15 +167,18 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options) {
 
 		if ((ret = libusb_open(devlist[i], &hdl)) < 0) {
 			sr_warn("Failed to open potential device with " "VID:PID %04x:%04x: %s.",
-						des.idVendor, des.idProduct, libusb_error_name(ret));
+						des.idVendor,
+						des.idProduct,
+						libusb_error_name(ret));
 			continue;
 		}
 
 		if (des.iManufacturer == 0) {
 			manufacturer[0] = '\0';
 		} else if ((ret = libusb_get_string_descriptor_ascii(hdl,
-				des.iManufacturer, (unsigned char *) manufacturer,
-				sizeof(manufacturer))) < 0) {
+																des.iManufacturer,
+																(unsigned char*) manufacturer,
+																sizeof(manufacturer))) < 0) {
 			sr_warn("Failed to get manufacturer string descriptor: %s.",
 						libusb_error_name(ret));
 			continue;
@@ -189,8 +186,10 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options) {
 
 		if (des.iProduct == 0) {
 			product[0] = '\0';
-		} else if ((ret = libusb_get_string_descriptor_ascii(hdl, des.iProduct,
-				(unsigned char *) product, sizeof(product))) < 0) {
+		} else if ((ret = libusb_get_string_descriptor_ascii(hdl,
+																des.iProduct,
+																(unsigned char*) product,
+																sizeof(product))) < 0) {
 			sr_warn("Failed to get product string descriptor: %s.",
 						libusb_error_name(ret));
 			continue;
@@ -199,8 +198,9 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options) {
 		if (des.iSerialNumber == 0) {
 			serial_num[0] = '\0';
 		} else if ((ret = libusb_get_string_descriptor_ascii(hdl,
-				des.iSerialNumber, (unsigned char *) serial_num,
-				sizeof(serial_num))) < 0) {
+																des.iSerialNumber,
+																(unsigned char*) serial_num,
+																sizeof(serial_num))) < 0) {
 			sr_warn("Failed to get serial number string descriptor: %s.",
 						libusb_error_name(ret));
 			continue;
@@ -209,10 +209,11 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options) {
 		usb_get_port_path(devlist[i], connection_id, sizeof(connection_id));
 
 		prof = NULL;
-		if (des.idVendor == la1010_profile.vid
-				&& des.idProduct == la1010_profile.pid
+		if ((des.idVendor == la1010_profile.vid)
+				&& (des.idProduct == la1010_profile.pid)
 				&& (!la1010_profile.usb_manufacturer
-						|| !strcmp(manufacturer, la1010_profile.usb_manufacturer))
+						|| !strcmp(manufacturer,
+								la1010_profile.usb_manufacturer))
 				&& (!la1010_profile.usb_product
 						|| !strcmp(product, la1010_profile.usb_product))) {
 			prof = &la1010_profile;
@@ -265,23 +266,24 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options) {
 			sdi->status = SR_ST_INACTIVE;
 			sdi->inst_type = SR_INST_USB;
 			sdi->conn = sr_usb_dev_inst_new(libusb_get_bus_number(devlist[i]),
-					libusb_get_device_address(devlist[i]), NULL);
+											libusb_get_device_address(devlist[i]),
+											NULL);
 		} else {
-			libusb_close(hdl);
-			hdl = NULL;
-			if (ezusb_upload_firmware(drvc->sr_ctx, devlist[i],
-					USB_CONFIGURATION, prof->fx_firmware) == SR_OK) {
+			if (kingst_la1010_upload_cypress_firmware(drvc->sr_ctx,
+														hdl,
+														prof) == SR_OK) {
 				/* Store when this device's FW was updated. */
 				devc->fw_updated = g_get_monotonic_time();
 				sr_dbg("FX2 firmware was uploaded to Kingst LA1010 device.");
 			} else
 				sr_err("Firmware upload failed for " "device %d.%d (logical).",
-						libusb_get_bus_number(devlist[i]),
-						libusb_get_device_address(devlist[i]));
+							libusb_get_bus_number(devlist[i]),
+							libusb_get_device_address(devlist[i]));
 
 			sdi->inst_type = SR_INST_USB;
-			sdi->conn = sr_usb_dev_inst_new(
-					libusb_get_bus_number(devlist[i]), 0xff, NULL);
+			sdi->conn = sr_usb_dev_inst_new(libusb_get_bus_number(devlist[i]),
+											0xff,
+											NULL);
 		}
 	}
 
@@ -330,7 +332,7 @@ static int dev_open(struct sr_dev_inst *sdi) {
 		}
 		sr_info("Device came back after %" PRIi64 "ms.", timediff_ms);
 	} else {
-		sr_info("Firmware upload was not needed.");
+		sr_info("Cypress firmware upload was not needed.");
 		ret = kingst_la1010_dev_open(sdi);
 	}
 
@@ -343,7 +345,8 @@ static int dev_open(struct sr_dev_inst *sdi) {
 	if (ret != 0) {
 		switch (ret) {
 		case LIBUSB_ERROR_BUSY:
-			sr_err("Unable to claim USB interface. Another " "program or driver has already claimed it.");
+			sr_err(
+					"Unable to claim USB interface. Another " "program or driver has already claimed it.");
 			break;
 		case LIBUSB_ERROR_NO_DEVICE:
 			sr_err("Device has been disconnected.");
@@ -356,20 +359,19 @@ static int dev_open(struct sr_dev_inst *sdi) {
 		return SR_ERR;
 	}
 
+	sr_dbg("Checking Cypress firmware...");
+
 	ret = kingst_la1010_has_fx_firmware(usb->devhdl);
 	if (ret) {
 		sr_err("Cypress wasn't initialized. Return status: 0x%x", ret);
 		return SR_ERR;
 	}
 
-	ret = kingst_la1010_has_spartan_firmware(usb->devhdl);
-	if (ret < 0) {
-		sr_dbg("Spartan isn't initialized. Try to upload firmware. Return status: 0x%x", ret);
-		ret = kingst_la1010_upload_spartan_firmware(sdi);
-		if (ret) {
-			sr_err("Upload Spartan firmware failed. Return status: 0x%x", ret);
-			return SR_ERR;
-		}
+	sr_dbg("Upload Spartan firmware...");
+	ret = kingst_la1010_upload_spartan_firmware(sdi);
+	if (ret) {
+		sr_err("Upload Spartan firmware failed. Return status: 0x%x", ret);
+		return SR_ERR;
 	}
 
 	ret = kingst_la1010_init_spartan(usb->devhdl);
@@ -406,11 +408,8 @@ static int dev_close(struct sr_dev_inst *sdi) {
 	return SR_OK;
 }
 
-static int config_get(uint32_t key,
-						GVariant **data,
-						const struct sr_dev_inst *sdi,
-						const struct sr_channel_group *cg)
-{
+static int config_get(uint32_t key, GVariant **data,
+		const struct sr_dev_inst *sdi, const struct sr_channel_group *cg) {
 	unsigned int i;
 	struct dev_context *devc;
 	struct sr_usb_dev_inst *usb;
@@ -460,11 +459,8 @@ static int config_get(uint32_t key,
 	return SR_OK;
 }
 
-static int config_set(uint32_t key,
-						GVariant *data,
-						const struct sr_dev_inst *sdi,
-						const struct sr_channel_group *cg)
-{
+static int config_set(uint32_t key, GVariant *data,
+		const struct sr_dev_inst *sdi, const struct sr_channel_group *cg) {
 	struct dev_context *devc;
 	struct sr_usb_dev_inst *usb;
 	int idx;
@@ -478,7 +474,8 @@ static int config_set(uint32_t key,
 
 	switch (key) {
 	case SR_CONF_SAMPLERATE:
-		if ((idx = std_u64_idx(data, devc->samplerates, devc->num_samplerates)) < 0)
+		if ((idx = std_u64_idx(data, devc->samplerates, devc->num_samplerates))
+				< 0)
 			return SR_ERR_ARG;
 		devc->cur_samplerate = devc->samplerates[idx];
 		break;
@@ -502,11 +499,8 @@ static int config_set(uint32_t key,
 	return SR_OK;
 }
 
-static int config_list(uint32_t key,
-						GVariant **data,
-						const struct sr_dev_inst *sdi,
-						const struct sr_channel_group *cg)
-{
+static int config_list(uint32_t key, GVariant **data,
+		const struct sr_dev_inst *sdi, const struct sr_channel_group *cg) {
 	struct dev_context *devc;
 
 	devc = (sdi) ? sdi->priv : NULL;
@@ -515,11 +509,13 @@ static int config_list(uint32_t key,
 		switch (key) {
 		case SR_CONF_SCAN_OPTIONS:
 		case SR_CONF_DEVICE_OPTIONS:
-			return STD_CONFIG_LIST(key, data, sdi, cg, scanopts, drvopts, devopts);
+			return STD_CONFIG_LIST(key, data, sdi, cg, scanopts, drvopts,
+					devopts);
 		case SR_CONF_SAMPLERATE:
 			if (!devc)
 				return SR_ERR_NA;
-			*data = std_gvar_samplerates(devc->samplerates, devc->num_samplerates);
+			*data = std_gvar_samplerates(devc->samplerates,
+					devc->num_samplerates);
 			break;
 		case SR_CONF_VOLTAGE_THRESHOLD:
 			*data = std_gvar_thresholds(ARRAY_AND_SIZE(thresholds));
@@ -538,32 +534,22 @@ static int config_list(uint32_t key,
 }
 
 static int dev_acquisition_start(const struct sr_dev_inst *sdi) {
-  sr_dbg("dev_acquisition_start(): start sampling");
+	sr_dbg("dev_acquisition_start(): start sampling");
 	return kingst_la1010_acquisition_start(sdi);
 }
 
 static int dev_acquisition_stop(struct sr_dev_inst *sdi) {
-  sr_dbg("dev_acquisition_start(): stop sampling");
+	sr_dbg("dev_acquisition_start(): stop sampling");
 	return kingst_la1010_acquisition_stop(sdi);
 }
 
-SR_PRIV struct sr_dev_driver kingst_la1010_driver_info = {
-	.name = "kingst-la1010",
-	.longname = "Kingst LA1010",
-	.api_version = 1,
-	.init = std_init,
-	.cleanup = std_cleanup,
-	.scan = scan,
-	.dev_list = std_dev_list,
-	.dev_clear = std_dev_clear,
-	.config_get = config_get,
-	.config_set = config_set,
-	.config_list = config_list,
-	.dev_open = dev_open,
-	.dev_close = dev_close,
-	.dev_acquisition_start = dev_acquisition_start,
-	.dev_acquisition_stop = dev_acquisition_stop,
-	.context = NULL,
-};
+SR_PRIV struct sr_dev_driver kingst_la1010_driver_info = { .name =
+		"kingst-la1010", .longname = "Kingst LA1010", .api_version = 1, .init =
+		std_init, .cleanup = std_cleanup, .scan = scan,
+		.dev_list = std_dev_list, .dev_clear = std_dev_clear, .config_get =
+				config_get, .config_set = config_set,
+		.config_list = config_list, .dev_open = dev_open,
+		.dev_close = dev_close, .dev_acquisition_start = dev_acquisition_start,
+		.dev_acquisition_stop = dev_acquisition_stop, .context = NULL, };
 
 SR_REGISTER_DEV_DRIVER(kingst_la1010_driver_info);

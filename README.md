@@ -2,11 +2,11 @@
 
 To enable Kingst LA-1010 support in libsigrok there need perform these steps:<br>
 <ol>
-  <li>get libsigrok sources (see docs for libsigrok);</li>
-  <li>copy directory 'kingst-la1010' to subdirectory 'src/hardware' in libsigrok source directory;</li>
-  <li>apply patches 'Makefile.am.patch' and 'configure.ac.patch' to corresponding files in libsigrok source directory;</li>
-  <li>build libsigrok (see docs for libsigrok);</li>
-  <li>use Python script 'sigrok-fwextract-kingstvis.py' for extracting firmwares from 'LA1010.dll'</li>
-  <li>copy firmwares to directory '~/.local/share/sigrok-firmware/'.</li>
+  <li>Get libsigrok sources (see docs for libsigrok).</li>
+  <li>Copy directory 'kingst-la1010' to subdirectory 'src/hardware' in libsigrok source directory.</li>
+  <li>Apply patches 'Makefile.am.patch' and 'configure.ac.patch' to corresponding files in libsigrok source directory.</li>
+  <li>Build libsigrok (see docs for libsigrok).</li>
+  <li>Use Python script 'fwextractor.py' for extracting firmwares from KingsVIS (Python v3.x). Firmwares will be extracted to current directory.</li>
+  <li>Copy firmwares to directory '~/.local/share/sigrok-firmware/'. Kingst-LA1010 uses the firmware 'fw01A2.hex' or 'fw01A2.fw' and the firmware 'LA1010A_0.bitstream' (after extracting may not have extension '.bitstream' -- must be renamed). If You answer 'y' when executing the script 'fwextractor.py' all operations (rename, format convertation etc.) will be performed.</li>
 </ol>
-Extracting firmwares is avalible from LA1010.ddl which are provided with old version of Kingst software (including up to 2.1.0).
+Extracting firmwares is avalible from KingsVIS executable which are provided with new version of Kingst software for Linux platform (tested on version 3.4.1).

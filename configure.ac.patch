@@ -1,12 +1,24 @@
+From 5250d4ea31c073f30c5029340f684bec8fa51087 Mon Sep 17 00:00:00 2001
+From: Alexandr Ugnenko <ugnenko@mail.ru>
+Date: Fri, 8 May 2020 16:13:58 +0300
+Subject: [PATCH] Kingst-LA1010 support was implemented.
+
+---
+ configure.ac | 1 +
+ 1 file changed, 1 insertion(+)
+
 diff --git a/configure.ac b/configure.ac
-index d9cfde41..87de2e45 100644
+index 6cc15bf7..2a2fe411 100644
 --- a/configure.ac
 +++ b/configure.ac
-@@ -253,6 +253,7 @@ SR_DRIVER([Ikalogic Scanaplus], [ikalogic-scanaplus], [libftdi])
+@@ -286,6 +286,7 @@ SR_DRIVER([Ikalogic Scanaplus], [ikalogic-scanaplus], [libftdi])
  SR_DRIVER([IPDBG LA], [ipdbg-la])
  SR_DRIVER([Kecheng KC-330B], [kecheng-kc-330b], [libusb])
- SR_DRIVER([KERN scale], [kern-scale], [libserialport])
-+SR_DRIVER([Kingst LA1010], [kingst-la1010])
- SR_DRIVER([Korad KAxxxxP], [korad-kaxxxxp], [libserialport])
+ SR_DRIVER([KERN scale], [kern-scale], [serial_comm])
++SR_DRIVER([Kingst LA1010], [kingst-la1010], [libusb])
+ SR_DRIVER([Korad KAxxxxP], [korad-kaxxxxp], [serial_comm])
  SR_DRIVER([Lascar EL-USB], [lascar-el-usb], [libusb])
  SR_DRIVER([LeCroy LogicStudio], [lecroy-logicstudio], [libusb])
+-- 
+2.17.1
+

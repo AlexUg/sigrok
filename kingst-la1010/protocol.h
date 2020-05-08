@@ -32,6 +32,7 @@
 #define USB_CONFIGURATION	1
 #define NUM_TRIGGER_STAGES	4
 
+#define USB_UPLOAD_DATA_EP      0x02
 #define USB_SAMPLING_DATA_EP    0x86
 
 #define MAX_RENUM_DELAY_MS	3000
@@ -65,6 +66,7 @@
 #define CMD_STATUS_FX_STATUS            0x0008
 #define CMD_CONTROL_END                 0x0001
 #define CMD_CONTROL_PWM                 0x0002
+#define CMD_STATUS_USB_STATUS           0x0020
 #define CMD_CONTROL_SAMPLE_RATE         0x002E
 #define CMD_CONTROL_CHAN_SELECT         0x0030
 #define CMD_CONTROL_LOG_LEVEL           0x0048  // electric signal level (Volts)
@@ -153,8 +155,8 @@ struct dev_context {
 };
 
 union fx_status {
-	uint8_t bytes[2];
-	uint16_t code;
+	uint8_t bytes[8];
+	uint32_t code[2];
 };
 
 union spartan_status {
@@ -162,13 +164,15 @@ union spartan_status {
 	uint32_t code;
 };
 
-SR_PRIV struct dev_context * kingst_la1010_dev_new(void);
-SR_PRIV int kingst_la1010_dev_open(const struct sr_dev_inst *sdi);
-SR_PRIV int kingst_la1010_abort_acquisition_request(libusb_device_handle * handle);
+SR_PRIV struct dev_context* kingst_la1010_dev_new(void);
 SR_PRIV int kingst_la1010_has_fx_firmware(struct libusb_device_handle *hdl);
-SR_PRIV int kingst_la1010_has_spartan_firmware(struct libusb_device_handle *hdl);
+int kingst_la1010_upload_cypress_firmware(struct sr_context *ctx,
+											struct libusb_device_handle *hdl,
+											const struct kingst_la1010_profile *prof);
 SR_PRIV int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi);
-SR_PRIV int kingst_la1010_init_spartan(struct libusb_device_handle * handle);
+SR_PRIV int kingst_la1010_init_spartan(struct libusb_device_handle *handle);
+SR_PRIV int kingst_la1010_dev_open(const struct sr_dev_inst *sdi);
+SR_PRIV int kingst_la1010_abort_acquisition_request(libusb_device_handle *handle);
 SR_PRIV int kingst_la1010_acquisition_start(const struct sr_dev_inst *sdi);
 SR_PRIV int kingst_la1010_acquisition_stop(const struct sr_dev_inst *sdi);
 SR_PRIV int kingst_la1010_set_logic_level(struct libusb_device_handle *hdl, double level);
@@ -179,6 +183,5 @@ SR_PRIV int kingst_la1010_configure_pwm(struct libusb_device_handle *hdl,
 										uint64_t pwm1_duty,
 										uint64_t pwm2_freq,
 										uint64_t pwm2_duty);
-
 
 #endif
