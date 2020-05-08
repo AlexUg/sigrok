@@ -26,7 +26,8 @@ static const struct kingst_la1010_profile la1010_profile = {
 		.vendor = "Kingst",
 		.model = "LA1010",
 		.model_version = 0,
-		.fx_firmware = "LA1010.fw",
+//		.fx_firmware = "LA1010.fw",
+		.fx_firmware = 0,	// file name will be retrieved from PID
 		.spartan_firmware = "LA1010.bitstream",
 		.dev_caps = DEV_CAPS_16BIT,
 		.usb_manufacturer = NULL,
@@ -268,10 +269,9 @@ static GSList* scan(struct sr_dev_driver *di, GSList *options) {
 											libusb_get_device_address(devlist[i]),
 											NULL);
 		} else {
-			libusb_close(hdl);
-			hdl = NULL;
-			if (ezusb_upload_firmware(drvc->sr_ctx, devlist[i],
-			USB_CONFIGURATION, prof->fx_firmware) == SR_OK) {
+			if (kingst_la1010_upload_cypress_firmware(drvc->sr_ctx,
+														hdl,
+														prof) == SR_OK) {
 				/* Store when this device's FW was updated. */
 				devc->fw_updated = g_get_monotonic_time();
 				sr_dbg("FX2 firmware was uploaded to Kingst LA1010 device.");

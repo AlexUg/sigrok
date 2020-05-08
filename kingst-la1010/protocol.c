@@ -26,6 +26,18 @@
 
 #define USB_TIMEOUT 1000
 
+
+static int read_hex_digit(unsigned char *firmware, size_t fw_size, size_t *offset);
+static int read_hex_byte(unsigned char *firmware, size_t fw_size, size_t *offset);
+static int read_hex_line(unsigned char *firmware,
+							size_t fw_size,
+							size_t *offset,
+							uint16_t *addr,
+							unsigned char *buffer);
+static int upload_cypress_firmware(struct sr_context *ctx,
+									struct libusb_device_handle *hdl,
+									const char *fw_file_name);
+
 static void finish_acquisition(const struct sr_dev_inst *sdi);
 static void free_transfer(struct libusb_transfer *transfer);
 static void resubmit_transfer(struct libusb_transfer *transfer);
@@ -67,167 +79,141 @@ static int upload_bindata_sync(libusb_device_handle *handle,
 								int size,
 								int trans_size);
 
-int kingst_la1010_receive_data(int fd, int revents, void *cb_data) {
-	struct timeval tv;
-	struct drv_context *drvc;
 
-	(void) fd;
-	(void) revents;
+int read_hex_digit(unsigned char *firmware, size_t fw_size, size_t *offset) {
+	uint8_t data;
 
-	drvc = (struct drv_context*) cb_data;
-	tv.tv_sec = tv.tv_usec = 0;
-	libusb_handle_events_timeout(drvc->sr_ctx->libusb_ctx, &tv);
-
-	return TRUE;
+	if (*offset >= fw_size) {
+		sr_err("read_hex_digit(): Unexpected end of data (offset %lu)", *offset);
+		return SR_ERR;
+	}
+	data = firmware[*offset];
+	*offset += 1;
+	if ((data >= '0')
+			&& (data <= '9')) {
+		data -= '0';
+	} else if ((data >= 'A')
+			&& (data <= 'F')) {
+		data -= 0x37;
+	} else if ((data >= 'a')
+			&& (data <= 'f')) {
+		data -= 0x57;
+	} else {
+		sr_err("read_hex_digit(): Wrong hex digit: %c (offset %lu)", data, *offset);
+		return SR_ERR;
+	}
+	return data;
 }
 
-int kingst_la1010_acquisition_start(const struct sr_dev_inst *sdi) {
-	struct sr_dev_driver *di;
-	struct drv_context *drvc;
-	struct dev_context *devc;
-	int timeout, ret;
+int read_hex_byte(unsigned char *firmware, size_t fw_size, size_t *offset) {
+	uint8_t d;
+	int data;
 
-	di = sdi->driver;
-	drvc = di->context;
-	devc = sdi->priv;
+	data = read_hex_digit(firmware, fw_size, offset);
+	if (data >= 0) {
+		d = data << 4;
+		data = read_hex_digit(firmware, fw_size, offset);
+		if (data >= 0) {
+			data += d;
+		}
+	}
+	return data;
+}
 
-	devc->ctx = drvc->sr_ctx;
-	devc->sent_samples = 0;
-	devc->cur_channel = 0;
-	devc->empty_transfer_count = 0;
-	devc->acq_aborted = FALSE;
-	memset(devc->channel_data, 0, 16 * 2);
+int read_hex_line(unsigned char *firmware,
+					size_t fw_size,
+					size_t *offset,
+					uint16_t *addr,
+					unsigned char *buffer) {
+	int data;
+	uint8_t size, i, checksum;
 
-	if (kingst_la1010_configure_channels(sdi) != SR_OK) {
-		sr_err("Failed to configure channels.");
+	if (*offset >= fw_size) {
+		sr_err("read_hex_line(): Unexpected end of data (offset %lu)", *offset);
+		return SR_ERR;
+	}
+	if (firmware[*offset] != ':') {
+		sr_err("read_hex_line(): Wrong hex line prefix, expected ':' (offset %lu)", *offset);
+		return SR_ERR;
+	}
+	*offset += 1;
+
+	// size -- 1 byte
+	data = read_hex_byte(firmware, fw_size, offset);
+	if (data < 0) {
+		sr_err("read_hex_line(): Wrong size (offset %lu)", *offset);
+		return SR_ERR;
+	}
+	checksum = data;
+	size = data;
+	if (size > 0x10) {
+		sr_err("read_hex_line(): Size greater than 0x10, size: %02X (offset %lu)", size, *offset);
 		return SR_ERR;
 	}
 
-	timeout = get_timeout(devc);
-	usb_source_add(sdi->session, devc->ctx, timeout, kingst_la1010_receive_data,
-			drvc);
+	// address -- 2 byte
+	data = read_hex_byte(firmware, fw_size, offset);
+	if (data < 0) {
+		sr_err("read_hex_line(): Wrong address first byte (offset %lu)", *offset);
+		return SR_ERR;
+	}
+	checksum += data;
+	*addr = data << 8;
+	data = read_hex_byte(firmware, fw_size, offset);
+	if (data < 0) {
+		sr_err("read_hex_line(): Wrong address second byte (offset %lu)", *offset);
+		return SR_ERR;
+	}
+	checksum += data;
+	*addr += data;
 
-	devc->convbuffer_size = (get_buffer_size(devc) / devc->num_channels) * 16
-			+ 32;
+	// type -- 1 byte
+	data = read_hex_byte(firmware, fw_size, offset);
+	if (data < 0) {
+		sr_err("read_hex_line(): Wrong type (offset %lu)", *offset);
+		return SR_ERR;
+	}
+	checksum += data;
+	if (data == 0x01) {
+		return 0;	// End of data
+	}
 
-	devc->convbuffer = g_try_malloc(devc->convbuffer_size);
-
-	if (devc->convbuffer) {
-		if ((ret = command_start_acquisition(sdi)) != SR_OK) {
-			kingst_la1010_acquisition_stop(sdi);
-			if (devc->convbuffer)
-				g_free(devc->convbuffer);
-			devc->convbuffer = NULL;
-			return ret;
+	// data -- 'size' bytes
+	for (i = 0; i < size; i++) {
+		data = read_hex_byte(firmware, fw_size, offset);
+		if (data < 0) {
+			sr_err("read_hex_line(): Wrong data byte (offset %lu)", *offset);
+			return SR_ERR;
 		}
-
-		start_transfers(sdi);
-	} else {
-		sr_err("Failed to allocate memory for data buffer.");
-		return SR_ERR_MALLOC;
+		checksum += data;
+		buffer[i] = data;
 	}
 
-	return SR_OK;
-}
-
-static int command_start_acquisition(const struct sr_dev_inst *sdi) {
-	struct dev_context *devc;
-	struct sr_usb_dev_inst *usb;
-	uint64_t samplerate;
-	uint16_t division;
-	int err;
-	uint8_t data[4];
-
-	devc = sdi->priv;
-	usb = sdi->conn;
-	samplerate = devc->cur_samplerate;
-	usb = sdi->conn;
-
-	data[0] = 0;
-	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_START, data, 1);
-	if (err) {
-		sr_err("Start configure channels failed.");
-		return err;
+	// checksum -- 1 byte
+	data = read_hex_byte(firmware, fw_size, offset);
+	if (data < 0) {
+		sr_err("read_hex_line(): Wrong checksum byte (offset %lu)", *offset);
+		return SR_ERR;
 	}
 
-	err = control_out(usb->devhdl, CMD_SAMPLING_CONFIG, CMD_SAMPLING_CONFIG,
-			NULL, 0);
-	if (err) {
-		sr_err("Enter to sampling rate configuration mode failed.");
-		return err;
+	if ((uint8_t) (checksum + data)) {
+		sr_err("read_hex_line(): Wrong checksum, given %02X, expected %02X (offset %lu)",
+					(uint8_t) (0 - checksum),
+					(uint8_t) data,
+					*offset);
+		return SR_ERR;
 	}
 
-	division = SAMPLING_BASE_FREQUENCY / samplerate;
-
-	err = control_out(usb->devhdl,
-	CMD_CONTROL,
-	CMD_CONTROL_SAMPLE_RATE, (uint8_t*) &division, sizeof(division));
-	if (err) {
-		sr_err("Set sample rate failed.");
-		return err;
-	}
-
-	data[0] = devc->cur_channels & 0xFF;
-	data[1] = devc->cur_channels >> 8;
-	data[2] = 0;
-	data[3] = 0;
-	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_CHAN_SELECT, data,
-			4);
-	if (err) {
-		sr_err("Set channel mask failed.");
-		return err;
-	}
-
-	data[0] = 1;
-	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_START, data, 1);
-	if (err) {
-		sr_err("Commit the channels and sample rate configuration failed.");
-		return err;
-	}
-
-	err = control_out(usb->devhdl, CMD_SAMPLING_START, CMD_SAMPLING_START, NULL,
-			0);
-	if (err) {
-		sr_err("Star sampling failed.");
-		return err;
-	}
-
-	return SR_OK;
-}
-
-int kingst_la1010_acquisition_stop(const struct sr_dev_inst *sdi) {
-	int i, ret;
-	struct sr_usb_dev_inst *usb;
-	struct dev_context *devc;
-
-	sr_dbg("kingst_la1010_acquisition_stop(): stop requested");
-	usb = sdi->conn;
-	devc = sdi->priv;
-
-	devc->acq_aborted = TRUE;
-
-	/*
-	 * There are need send request to stop sampling.
-	 */
-	ret = kingst_la1010_abort_acquisition_request(usb->devhdl);
-	if (ret)
-		sr_err(
-				"kingst_la1010_acquisition_stop(): Stop sampling error %d. libusb err: %s",
-				ret, libusb_error_name(ret));
-
-	sr_dbg("kingst_la1010_acquisition_stop(): cancel %d transfers", devc->num_transfers);
-	for (i = devc->num_transfers - 1; i >= 0; i--) {
-		if (devc->transfers[i]) {
-			ret = libusb_cancel_transfer(devc->transfers[i]);
-			if (ret != LIBUSB_ERROR_NOT_FOUND) {
-				sr_err(
-						"kingst_la1010_acquisition_stop(): cancel %d transfer error %d. libusb err: %s",
-						i, ret, libusb_error_name(ret));
-			}
+	// end of line
+	while (firmware[*offset] != ':') {
+		*offset += 1;
+		if (*offset >= fw_size) {
+			sr_err("read_hex_line(): Unexpected end of data (offset %lu)", *offset);
+			return SR_ERR;
 		}
 	}
 
-	return ret;
+	return size;
 }
 
 /*
@@ -262,6 +248,95 @@ int kingst_la1010_has_fx_firmware(struct libusb_device_handle *hdl) {
 	}
 
 	return SR_ERR;
+}
+
+int upload_cypress_firmware(struct sr_context *ctx,
+							struct libusb_device_handle *hdl,
+							const char *fw_file_name) {
+	size_t s, offset, fw_size;
+	uint16_t addr;
+	int res;
+	unsigned char *firmware, buffer[16];
+
+	s = strlen(fw_file_name);
+	if (s > 0) {
+		if ((res = libusb_set_configuration(hdl, USB_CONFIGURATION)) < 0) {
+			sr_err("upload_cypress_firmware(): Unable to set configuration: %s",
+					libusb_error_name(res));
+			return SR_ERR;
+		}
+		if ((ezusb_reset(hdl, 1)) < 0) {
+			sr_err("upload_cypress_firmware(): Reset Cypress for upload FW failed");
+			return SR_ERR;
+		}
+		if (memcmp(fw_file_name + (s - 3), "hex", 3)) {
+			// binary
+			if (ezusb_install_firmware(ctx, hdl, fw_file_name) < 0) {
+				sr_err("upload_cypress_firmware(): Upload binary FW failed");
+				return SR_ERR;
+			}
+		} else {
+			// Intel-HEX
+			firmware = sr_resource_load(ctx,
+										SR_RESOURCE_FIRMWARE,
+										fw_file_name,
+										&fw_size,
+										1 << 16);
+
+			if (!firmware) {
+				sr_err("upload_cypress_firmware(): Read Intel-HEX file failed");
+				return SR_ERR;
+			}
+
+			offset = 0;
+			res = read_hex_line(firmware, fw_size, &offset, &addr, buffer);
+			while (res > 0) {
+				res = control_out(hdl, 0xA0, addr, buffer, res);
+				if (res < 0) {
+					break;
+				}
+				res = read_hex_line(firmware, fw_size, &offset, &addr, buffer);
+			}
+
+			g_free(firmware);
+
+			if (res < 0) {
+				sr_err("upload_cypress_firmware(): Upload Intel-HEX FW failed");
+				return SR_ERR;
+			}
+		}
+		if ((ezusb_reset(hdl, 0)) < 0) {
+			sr_err("upload_cypress_firmware(): Reset Cypress for upload FW failed");
+			return SR_ERR;
+		}
+	} else {
+		sr_err("upload_cypress_firmware(): FW file name has null size");
+		return SR_ERR;
+	}
+	return SR_OK;
+}
+
+
+/*
+ * Upload spartan bitstream.
+ */
+int kingst_la1010_upload_cypress_firmware(struct sr_context *ctx,
+											struct libusb_device_handle *hdl,
+											const struct kingst_la1010_profile *prof) {
+	char fw_file_name[16];
+	int res;
+
+	if (prof->fx_firmware) {
+		res = upload_cypress_firmware(ctx, hdl, prof->fx_firmware);
+	} else {
+		snprintf(fw_file_name, 16, "fw%04X.hex", prof->pid);
+		res = upload_cypress_firmware(ctx, hdl, fw_file_name);
+		if (res < 0) {
+			snprintf(fw_file_name, 16, "fw%04X.fw", prof->pid);
+			res = upload_cypress_firmware(ctx, hdl, fw_file_name);
+		}
+	}
+	return res;
 }
 
 /*
@@ -491,6 +566,170 @@ int kingst_la1010_init_spartan(struct libusb_device_handle *handle) {
 
 	return SR_OK;
 }
+
+int kingst_la1010_receive_data(int fd, int revents, void *cb_data) {
+	struct timeval tv;
+	struct drv_context *drvc;
+
+	(void) fd;
+	(void) revents;
+
+	drvc = (struct drv_context*) cb_data;
+	tv.tv_sec = tv.tv_usec = 0;
+	libusb_handle_events_timeout(drvc->sr_ctx->libusb_ctx, &tv);
+
+	return TRUE;
+}
+
+int kingst_la1010_acquisition_start(const struct sr_dev_inst *sdi) {
+	struct sr_dev_driver *di;
+	struct drv_context *drvc;
+	struct dev_context *devc;
+	int timeout, ret;
+
+	di = sdi->driver;
+	drvc = di->context;
+	devc = sdi->priv;
+
+	devc->ctx = drvc->sr_ctx;
+	devc->sent_samples = 0;
+	devc->cur_channel = 0;
+	devc->empty_transfer_count = 0;
+	devc->acq_aborted = FALSE;
+	memset(devc->channel_data, 0, 16 * 2);
+
+	if (kingst_la1010_configure_channels(sdi) != SR_OK) {
+		sr_err("Failed to configure channels.");
+		return SR_ERR;
+	}
+
+	timeout = get_timeout(devc);
+	usb_source_add(sdi->session, devc->ctx, timeout, kingst_la1010_receive_data,
+			drvc);
+
+	devc->convbuffer_size = (get_buffer_size(devc) / devc->num_channels) * 16
+			+ 32;
+
+	devc->convbuffer = g_try_malloc(devc->convbuffer_size);
+
+	if (devc->convbuffer) {
+		if ((ret = command_start_acquisition(sdi)) != SR_OK) {
+			kingst_la1010_acquisition_stop(sdi);
+			if (devc->convbuffer)
+				g_free(devc->convbuffer);
+			devc->convbuffer = NULL;
+			return ret;
+		}
+
+		start_transfers(sdi);
+	} else {
+		sr_err("Failed to allocate memory for data buffer.");
+		return SR_ERR_MALLOC;
+	}
+
+	return SR_OK;
+}
+
+static int command_start_acquisition(const struct sr_dev_inst *sdi) {
+	struct dev_context *devc;
+	struct sr_usb_dev_inst *usb;
+	uint64_t samplerate;
+	uint16_t division;
+	int err;
+	uint8_t data[4];
+
+	devc = sdi->priv;
+	usb = sdi->conn;
+	samplerate = devc->cur_samplerate;
+	usb = sdi->conn;
+
+	data[0] = 0;
+	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_START, data, 1);
+	if (err) {
+		sr_err("Start configure channels failed.");
+		return err;
+	}
+
+	err = control_out(usb->devhdl, CMD_SAMPLING_CONFIG, CMD_SAMPLING_CONFIG,
+			NULL, 0);
+	if (err) {
+		sr_err("Enter to sampling rate configuration mode failed.");
+		return err;
+	}
+
+	division = SAMPLING_BASE_FREQUENCY / samplerate;
+
+	err = control_out(usb->devhdl,
+	CMD_CONTROL,
+	CMD_CONTROL_SAMPLE_RATE, (uint8_t*) &division, sizeof(division));
+	if (err) {
+		sr_err("Set sample rate failed.");
+		return err;
+	}
+
+	data[0] = devc->cur_channels & 0xFF;
+	data[1] = devc->cur_channels >> 8;
+	data[2] = 0;
+	data[3] = 0;
+	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_CHAN_SELECT, data,
+			4);
+	if (err) {
+		sr_err("Set channel mask failed.");
+		return err;
+	}
+
+	data[0] = 1;
+	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_START, data, 1);
+	if (err) {
+		sr_err("Commit the channels and sample rate configuration failed.");
+		return err;
+	}
+
+	err = control_out(usb->devhdl, CMD_SAMPLING_START, CMD_SAMPLING_START, NULL,
+			0);
+	if (err) {
+		sr_err("Star sampling failed.");
+		return err;
+	}
+
+	return SR_OK;
+}
+
+int kingst_la1010_acquisition_stop(const struct sr_dev_inst *sdi) {
+	int i, ret;
+	struct sr_usb_dev_inst *usb;
+	struct dev_context *devc;
+
+	sr_dbg("kingst_la1010_acquisition_stop(): stop requested");
+	usb = sdi->conn;
+	devc = sdi->priv;
+
+	devc->acq_aborted = TRUE;
+
+	/*
+	 * There are need send request to stop sampling.
+	 */
+	ret = kingst_la1010_abort_acquisition_request(usb->devhdl);
+	if (ret)
+		sr_err(
+				"kingst_la1010_acquisition_stop(): Stop sampling error %d. libusb err: %s",
+				ret, libusb_error_name(ret));
+
+	sr_dbg("kingst_la1010_acquisition_stop(): cancel %d transfers", devc->num_transfers);
+	for (i = devc->num_transfers - 1; i >= 0; i--) {
+		if (devc->transfers[i]) {
+			ret = libusb_cancel_transfer(devc->transfers[i]);
+			if (ret != LIBUSB_ERROR_NOT_FOUND) {
+				sr_err(
+						"kingst_la1010_acquisition_stop(): cancel %d transfer error %d. libusb err: %s",
+						i, ret, libusb_error_name(ret));
+			}
+		}
+	}
+
+	return ret;
+}
+
 
 /*
  * Configure threshold levels.

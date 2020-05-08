@@ -165,11 +165,14 @@ union spartan_status {
 };
 
 SR_PRIV struct dev_context* kingst_la1010_dev_new(void);
-SR_PRIV int kingst_la1010_dev_open(const struct sr_dev_inst *sdi);
-SR_PRIV int kingst_la1010_abort_acquisition_request(libusb_device_handle *handle);
 SR_PRIV int kingst_la1010_has_fx_firmware(struct libusb_device_handle *hdl);
+int kingst_la1010_upload_cypress_firmware(struct sr_context *ctx,
+											struct libusb_device_handle *hdl,
+											const struct kingst_la1010_profile *prof);
 SR_PRIV int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi);
 SR_PRIV int kingst_la1010_init_spartan(struct libusb_device_handle *handle);
+SR_PRIV int kingst_la1010_dev_open(const struct sr_dev_inst *sdi);
+SR_PRIV int kingst_la1010_abort_acquisition_request(libusb_device_handle *handle);
 SR_PRIV int kingst_la1010_acquisition_start(const struct sr_dev_inst *sdi);
 SR_PRIV int kingst_la1010_acquisition_stop(const struct sr_dev_inst *sdi);
 SR_PRIV int kingst_la1010_set_logic_level(struct libusb_device_handle *hdl, double level);
