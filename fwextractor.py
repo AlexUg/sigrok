@@ -68,8 +68,6 @@ PayloadEntry:
 
 debug = False
 
-sigrok_fw_dir = '~/.local/share/sigrok-firmware'
-
 fwusb_str = 'fwusb'
 fwfpga_str = 'fwfpga'
 
@@ -222,7 +220,8 @@ def hexToFw(src_file_name, dst_file_name):
         dst_file.write(bin_data)
     
 
-def saveFirmwares(firmwares):
+def saveFirmwares(firmwares, sigrok_fw_dir):
+    sigrok_fw_dir = os.path.join(sigrok_fw_dir, 'kingst')
     if not os.path.isdir(sigrok_fw_dir):
         os.makedirs(sigrok_fw_dir)
     if fwusb_str in firmwares:
@@ -255,10 +254,7 @@ def main():
         return -1
     filename = sys.argv[1]
     
-    global sigrok_fw_dir
-    if sigrok_fw_dir[0:2] == '~/':
-        home_dir = os.path.expanduser('~')
-        sigrok_fw_dir = os.path.join(home_dir, sigrok_fw_dir[2:])
+    sigrok_fw_dir = '~/.local/share/sigrok-firmware/'
     
     with open(filename, 'rb') as file:
         elffile = ELFFile(file)
@@ -291,14 +287,14 @@ def main():
     saveResources(resources, '.', firmwares)
     
     if len(firmwares) > 0:
-        print("Do You want copy firmwares to \'%s\' dir?" % (sigrok_fw_dir))
-        ans = input("WARNING! This rewrite existing files! (N,y):")
-        if ans.upper() == 'Y':
-            saveFirmwares(firmwares)
-        else:
-            print("Firmwares extracted.")
-            print("Cypress firmwares must be renamed to \'*.fw\'")
-            print("Spartan firmwares must be renamed to \'*.bitstream\'")
+        print("Firmwares will be copied to \'%s\' dir or enter new full path" % (sigrok_fw_dir))
+        ans = input("WARNING! This rewrite existing files in target dir!: ")
+        if len(ans) > 0:
+            sigrok_fw_dir = ans
+        if sigrok_fw_dir[0:2] == '~/':
+            home_dir = os.path.expanduser('~')
+            sigrok_fw_dir = os.path.join(home_dir, sigrok_fw_dir[2:])
+        saveFirmwares(firmwares, sigrok_fw_dir)
     
     print('Done')
 

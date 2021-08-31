@@ -20,12 +20,182 @@
 #include <config.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <libusb.h>
 
 #include "protocol.h"
 
 #define USB_TIMEOUT 1000
 
+
+const char * cypres_fw_pattern_hex = "kingst/fw%04X.hex";
+const char * cypres_fw_pattern_fw = "kingst/fw%04X.fw";
+
+const char * spartan_fw_pattern_hex = "kingst/%s.bitstream";
+const char * spartan_fw_pattern_hexd = "kingst/%s%d.bitstream";
+
+
+struct kingst_laxxxx_desc dev_LA1016 =
+	{
+		.model = "LA1016",
+		.device_id = 2,
+		.device_variant = -1,
+
+		.num_logic_channels = 16
+	};
+
+struct kingst_laxxxx_desc dev_LA2016 =
+	{
+		.model = "LA2016",
+		.device_id = 3,
+		.device_variant = -1,
+
+		.num_logic_channels = 16
+	};
+
+struct kingst_laxxxx_desc dev_LA5016 =
+	{
+		.model = "LA5016",
+		.device_id = 4,
+		.device_variant = -1,
+
+		.num_logic_channels = 16
+	};
+
+struct kingst_laxxxx_desc dev_LA1010A0 =
+	{
+		.model = "LA1010A",
+		.device_id = 5,
+		.device_variant = 0,
+
+		.num_logic_channels = 16
+	};
+
+struct kingst_laxxxx_desc dev_LA1010A01 =
+	{
+		.model = "LA1010A",
+		.device_id = 5,
+		.device_variant = 1,
+
+		.num_logic_channels = 16
+	};
+
+struct kingst_laxxxx_desc dev_LA1010A02 =
+	{
+		.model = "LA1010A",
+		.device_id = 5,
+		.device_variant = 2,
+
+		.num_logic_channels = 16
+	};
+
+struct kingst_laxxxx_desc dev_LA1016A =
+	{
+		.model = "LA1016A",
+		.device_id = 6,
+		.device_variant = -1,
+
+		.num_logic_channels = 16
+	};
+
+struct kingst_laxxxx_desc dev_LA1016A1 =
+	{
+		.model = "LA1016A",
+		.device_id = 6,
+		.device_variant = 1,
+
+		.num_logic_channels = 16
+	};
+
+struct kingst_laxxxx_desc dev_LA2016A =
+	{
+		.model = "LA2016A",
+		.device_id = 7,
+		.device_variant = -1,
+
+		.num_logic_channels = 16
+	};
+
+struct kingst_laxxxx_desc dev_LA2016A1 =
+	{
+		.model = "LA2016A",
+		.device_id = 7,
+		.device_variant = 1,
+
+		.num_logic_channels = 16
+	};
+
+struct kingst_laxxxx_desc dev_LA5016A =
+	{
+		.model = "LA5016A",
+		.device_id = 8,
+		.device_variant = -1,
+
+		.num_logic_channels = 16
+	};
+
+struct kingst_laxxxx_desc dev_LA5016A1 =
+	{
+		.model = "LA5016A",
+		.device_id = 8,
+		.device_variant = 1,
+
+		.num_logic_channels = 16
+	};
+
+struct kingst_laxxxx_desc dev_LA5032A =
+	{
+		.model = "LA5032A",
+		.device_id = 9,
+		.device_variant = -1,
+
+		.num_logic_channels = 32
+	};
+
+struct kingst_laxxxx_desc dev_LA5032A0 =
+	{
+		.model = "LA5032A",
+		.device_id = 9,
+		.device_variant = 0,
+
+		.num_logic_channels = 32
+	};
+
+struct kingst_laxxxx_desc dev_MS6218 =
+	{
+		.model = "MS6218",
+		.device_id = 0x31,
+		.device_variant = -1,
+
+		.num_logic_channels = 0
+	};
+
+struct kingst_laxxxx_desc dev_LA5016A1_41 =
+	{
+		.model = "LA5016A",
+		.device_id = 0x41,
+		.device_variant = 1,
+
+		.num_logic_channels = 16
+	};
+
+struct kingst_laxxxx_desc dev_LA5032A_0x65 =
+	{
+		.model = "LA5032A",
+		.device_id = 0x65,
+		.device_variant = -1,
+
+		.num_logic_channels = 32
+	};
+
+struct kingst_laxxxx_desc dev_LA5016A_0x66 =
+	{
+		.model = "LA5016A",
+		.device_id = 0x66,
+		.device_variant = -1,
+
+		.num_logic_channels = 16
+	};
+
+struct kingst_laxxxx_desc* get_device_description(uint8_t data[8]);
 
 static int read_hex_digit(unsigned char *firmware, size_t fw_size, size_t *offset);
 static int read_hex_byte(unsigned char *firmware, size_t fw_size, size_t *offset);
@@ -79,6 +249,53 @@ static int upload_bindata_sync(libusb_device_handle *handle,
 								int size,
 								int trans_size);
 
+
+struct kingst_laxxxx_desc* get_device_description(uint8_t data[8]) {
+	uint8_t code;
+
+	if ((data[0] ^ data[1]) == 0xFF) {
+		code = data[0];
+	} else if ((data[4] ^ data[5]) == 0xFF) {
+		code = data[4];
+	} else {
+		code = 0xFF;
+	}
+	switch (code) {
+	case 2:
+		if (((data[2] ^ data[3]) == 0xFF)
+				&& (data[2] == 1)) {
+			return &dev_LA2016A1;
+		} else {
+			return &dev_LA2016;
+		}
+	case 3:
+		if (((data[2] ^ data[3]) == 0xFF)
+				&& (data[2] == 1)) {
+			return &dev_LA1016A1;
+		} else {
+			return &dev_LA1016;
+		}
+	case 4:
+		return &dev_LA1010A0;
+	case 5:
+		return &dev_LA5016A1;
+	case 6:
+		return &dev_LA5032A0;
+	case 7:
+		return &dev_LA1010A01;
+	case 8:
+		return &dev_LA2016A1;
+	case 9:
+		return &dev_LA1016A1;
+	case 10:
+		return &dev_LA1010A02;
+	case 49:
+		return &dev_MS6218;
+	case 65:
+		return &dev_LA5016A1_41;
+	}
+	return NULL;
+}
 
 int read_hex_digit(unsigned char *firmware, size_t fw_size, size_t *offset) {
 	uint8_t data;
@@ -218,33 +435,68 @@ int read_hex_line(unsigned char *firmware,
 
 /*
  * Check if the fx firmware was uploaded to cypress.
- * If FX firmware was loaded the cypress returns 0xFB04 (may be firmware version?).
+ * Returns pointer to 'struct kingst_laxxxx_desc' in 'device_desc' if device is supported.
  */
-int kingst_la1010_has_fx_firmware(struct libusb_device_handle *hdl) {
+int kingst_laxxxx_has_fx_firmware(struct libusb_device_handle *hdl, struct kingst_laxxxx_desc ** device_desc) {
 	int err;
 	struct libusb_device * dev;
  	struct libusb_config_descriptor * config;
+	union fx_status fx_status;
+	uint16_t dev_batch;
 
 	dev = libusb_get_device(hdl);
 	err = libusb_get_active_config_descriptor(dev, &config);
 	if (err) {
 		sr_err(
-				"kingst_la1010_has_fx_firmware(): get active usb config descriptor failed. libusb err: %s",
+				"kingst_laxxxx_has_fx_firmware(): get active usb config descriptor failed. libusb err: %s",
 				libusb_error_name(err));
 		return err;
 	}
 	if (config->bNumInterfaces == 1) {
 		if (config->interface->altsetting->bNumEndpoints == 2) {
+
+			err = control_in(hdl,
+								CMD_STATUS,
+								CMD_STATUS_USB_STATUS,
+								fx_status.bytes,
+								4);
+			if (err) {
+				sr_err(
+						"kingst_laxxxx_upload_spartan_firmware(): check Cypress status failed. libusb err: %s",
+						libusb_error_name(err));
+				return err;
+			}
+
+			if ((fx_status.words[0] ^ fx_status.words[1]) == 0xFFFF) {
+				dev_batch = fx_status.words[0];
+			} else {
+				dev_batch = 0;
+			}
+
+			err = control_in(hdl,
+								CMD_STATUS,
+								CMD_STATUS_FX_STATUS,
+								fx_status.bytes,
+								sizeof(fx_status.bytes));
+			if (err) {
+				sr_err(
+						"kingst_laxxxx_upload_spartan_firmware(): check Cypress FW status failed. libusb err: %s",
+						libusb_error_name(err));
+				return err;
+			}
+
+			*device_desc = get_device_description(fx_status.bytes);
+
+			if (!(*device_desc)) {
+				sr_err(
+						"kingst_laxxxx_upload_spartan_firmware(): unknown device description");
+				return SR_ERR;
+			} else {
+				(*device_desc)->dev_batch = dev_batch;
+			}
+
 			return SR_OK;
-		} else {
-			sr_err(
-					"kingst_la1010_has_fx_firmware(): iface->altsetting->bNumEndpoints: %d",
-					config->interface->altsetting->bNumEndpoints);
 		}
-	} else {
-		sr_err(
-				"kingst_la1010_has_fx_firmware(): config->bNumInterfaces: %d",
-				config->bNumInterfaces);
 	}
 
 	return SR_ERR;
@@ -257,6 +509,8 @@ int upload_cypress_firmware(struct sr_context *ctx,
 	uint16_t addr;
 	int res;
 	unsigned char *firmware, buffer[16];
+
+	sr_dbg("Uploading FX2 firmware from '%s'...", fw_file_name);
 
 	s = strlen(fw_file_name);
 	if (s > 0) {
@@ -320,21 +574,17 @@ int upload_cypress_firmware(struct sr_context *ctx,
 /*
  * Upload spartan bitstream.
  */
-int kingst_la1010_upload_cypress_firmware(struct sr_context *ctx,
+int kingst_laxxxx_upload_cypress_firmware(struct sr_context *ctx,
 											struct libusb_device_handle *hdl,
-											const struct kingst_la1010_profile *prof) {
-	char fw_file_name[16];
+											const struct kingst_laxxxx_profile *prof) {
+	char fw_file_name[128];
 	int res;
 
-	if (prof->fx_firmware) {
-		res = upload_cypress_firmware(ctx, hdl, prof->fx_firmware);
-	} else {
-		snprintf(fw_file_name, 16, "fw%04X.hex", prof->pid);
+	snprintf(fw_file_name, 128, cypres_fw_pattern_hex, prof->pid);
+	res = upload_cypress_firmware(ctx, hdl, fw_file_name);
+	if (res < 0) {
+		snprintf(fw_file_name, 128, cypres_fw_pattern_fw, prof->pid);
 		res = upload_cypress_firmware(ctx, hdl, fw_file_name);
-		if (res < 0) {
-			snprintf(fw_file_name, 16, "fw%04X.fw", prof->pid);
-			res = upload_cypress_firmware(ctx, hdl, fw_file_name);
-		}
 	}
 	return res;
 }
@@ -342,63 +592,32 @@ int kingst_la1010_upload_cypress_firmware(struct sr_context *ctx,
 /*
  * Upload spartan bitstream.
  */
-int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
+int kingst_laxxxx_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 	struct drv_context *drvc;
 	struct dev_context *devc;
 	struct sr_usb_dev_inst *usb;
 	struct libusb_device *usbdev;
-	union fx_status fx_status;
 	union spartan_status spartan_status;
 	uint8_t *bindata, verify_data[32];
 	uint32_t binsize;
 	int err, i;
+	char fw_file_name[128];
 
 	usb = sdi->conn;
 	drvc = sdi->driver->context;
 	devc = sdi->priv;
 
-	err = control_in(usb->devhdl,
-						CMD_STATUS,
-						CMD_STATUS_USB_STATUS,
-						fx_status.bytes,
-						4);
-	if (err) {
-		sr_err(
-				"kingst_la1010_upload_spartan_firmware(): check Cypress status failed. libusb err: %s",
-				libusb_error_name(err));
-		return err;
+	if (devc->profile.description->device_variant < 0) {
+		snprintf(fw_file_name, 128, spartan_fw_pattern_hex, devc->profile.description->model);
+	} else {
+		snprintf(fw_file_name, 128, spartan_fw_pattern_hexd, devc->profile.description->model, devc->profile.description->device_variant);
 	}
 
-	if (fx_status.code[0] != 0xFFFFFFFF) {
-		sr_err(
-				"kingst_la1010_upload_spartan_firmware(): wrong Cypress status: %x",
-				fx_status.code[0]);
-		return SR_ERR;
-	}
-
-	err = control_in(usb->devhdl,
-						CMD_STATUS,
-						CMD_STATUS_FX_STATUS,
-						fx_status.bytes,
-						sizeof(fx_status.bytes));
-	if (err) {
-		sr_err(
-				"kingst_la1010_upload_spartan_firmware(): check Cypress FW status failed. libusb err: %s",
-				libusb_error_name(err));
-		return err;
-	}
-
-	if ((fx_status.bytes[0] ^ fx_status.bytes[1]) != 0xFF) {
-		sr_err(
-				"kingst_la1010_upload_spartan_firmware(): wrong Cypress FW status: %x, %x",
-				fx_status.bytes[0],
-				fx_status.bytes[1]);
-		return SR_ERR;
-	}
+	sr_dbg("Uploading Spartan firmware from '%s'...", fw_file_name);
 
 	bindata = sr_resource_load(drvc->sr_ctx,
 								SR_RESOURCE_FIRMWARE,
-								devc->profile->spartan_firmware,
+								fw_file_name,
 								(size_t*) &binsize,
 								0x020000);
 	if (!bindata) {
@@ -412,7 +631,7 @@ int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 						sizeof(binsize));
 	if (err) {
 		sr_err(
-				"kingst_la1010_upload_spartan_firmware(): upload Spartan firmware failed. libusb err: %s",
+				"kingst_laxxxx_upload_spartan_firmware(): upload Spartan firmware failed. libusb err: %s",
 				libusb_error_name(err));
 		return err;
 	}
@@ -427,7 +646,7 @@ int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 		g_free(bindata);
 		if (err) {
 			sr_err(
-					"kingst_la1010_upload_spartan_firmware(): upload Spartan firmware failed. libusb err: %s",
+					"kingst_laxxxx_upload_spartan_firmware(): upload Spartan firmware failed. libusb err: %s",
 					libusb_error_name(err));
 			return err;
 		}
@@ -441,7 +660,7 @@ int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 							1);
 		if (err) {
 			sr_err(
-					"kingst_la1010_upload_spartan_firmware(): check Spartan status failed. libusb err: %s",
+					"kingst_laxxxx_upload_spartan_firmware(): check Spartan status failed. libusb err: %s",
 					libusb_error_name(err));
 			return err;
 		}
@@ -460,7 +679,7 @@ int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 							0);
 		if (err) {
 			sr_err(
-					"kingst_la1010_upload_spartan_firmware(): start Spartan failed. libusb err: %s",
+					"kingst_laxxxx_upload_spartan_firmware(): start Spartan failed. libusb err: %s",
 					libusb_error_name(err));
 			return err;
 		}
@@ -474,10 +693,11 @@ int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 							2);
 		if (err) {
 			sr_err(
-					"kingst_la1010_upload_spartan_firmware(): check Spartan status failed. libusb err: %s",
+					"kingst_laxxxx_upload_spartan_firmware(): check Spartan status failed. libusb err: %s",
 					libusb_error_name(err));
 			return err;
 		}
+		sr_dbg("Spartan status 0x%04X", spartan_status.code);
 
 		/// GetVerifyData
 		verify_data[0] = 0xA3;
@@ -490,7 +710,7 @@ int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 							11);
 		if (err) {
 			sr_err(
-					"kingst_la1010_upload_spartan_firmware(): GetVerifyData out failed. libusb err: %s",
+					"kingst_laxxxx_upload_spartan_firmware(): GetVerifyData out failed. libusb err: %s",
 					libusb_error_name(err));
 			return err;
 		}
@@ -501,7 +721,7 @@ int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 							18);
 		if (err) {
 			sr_err(
-					"kingst_la1010_upload_spartan_firmware(): GetVerifyData in failed. libusb err: %s",
+					"kingst_laxxxx_upload_spartan_firmware(): GetVerifyData in failed. libusb err: %s",
 					libusb_error_name(err));
 			return err;
 		}
@@ -518,7 +738,7 @@ int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 							3);
 		if (err) {
 			sr_err(
-					"kingst_la1010_upload_spartan_firmware(): GetVerifyData out failed. libusb err: %s",
+					"kingst_laxxxx_upload_spartan_firmware(): GetVerifyData out failed. libusb err: %s",
 					libusb_error_name(err));
 			return err;
 		}
@@ -529,7 +749,7 @@ int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 							12);
 		if (err) {
 			sr_err(
-					"kingst_la1010_upload_spartan_firmware(): GetVerifyData in failed. libusb err: %s",
+					"kingst_laxxxx_upload_spartan_firmware(): GetVerifyData in failed. libusb err: %s",
 					libusb_error_name(err));
 			return err;
 		}
@@ -547,27 +767,33 @@ int kingst_la1010_upload_spartan_firmware(const struct sr_dev_inst *sdi) {
 /*
  * Init the device for usage.
  */
-int kingst_la1010_init_spartan(struct libusb_device_handle *handle) {
+int kingst_laxxxx_init_spartan(struct libusb_device_handle *handle) {
 	int err;
+
+	err = control_out(handle, CMD_RESET_BULK_STATE, 0, NULL, 0);
+	if (err) {
+		sr_err("Reset bulk state failed.");
+		return err;
+	}
 
 	/*
 	 * Configure voltage threshold.
 	 */
-	err = kingst_la1010_set_logic_level(handle, 1.58);
+	err = kingst_laxxxx_set_logic_level(handle, 1.58);
 	if (err)
 		return err;
 
 	/*
 	 * Configure PWM channels -- two channels.
 	 */
-	err = kingst_la1010_configure_pwm(handle, 0, 50, 0, 50);
+	err = kingst_laxxxx_configure_pwm(handle, 0, 50, 0, 50);
 	if (err)
 		return err;
 
 	return SR_OK;
 }
 
-int kingst_la1010_receive_data(int fd, int revents, void *cb_data) {
+int kingst_laxxxx_receive_data(int fd, int revents, void *cb_data) {
 	struct timeval tv;
 	struct drv_context *drvc;
 
@@ -581,7 +807,7 @@ int kingst_la1010_receive_data(int fd, int revents, void *cb_data) {
 	return TRUE;
 }
 
-int kingst_la1010_acquisition_start(const struct sr_dev_inst *sdi) {
+int kingst_laxxxx_acquisition_start(const struct sr_dev_inst *sdi) {
 	struct sr_dev_driver *di;
 	struct drv_context *drvc;
 	struct dev_context *devc;
@@ -598,13 +824,13 @@ int kingst_la1010_acquisition_start(const struct sr_dev_inst *sdi) {
 	devc->acq_aborted = FALSE;
 	memset(devc->channel_data, 0, 16 * 2);
 
-	if (kingst_la1010_configure_channels(sdi) != SR_OK) {
+	if (kingst_laxxxx_configure_channels(sdi) != SR_OK) {
 		sr_err("Failed to configure channels.");
 		return SR_ERR;
 	}
 
 	timeout = get_timeout(devc);
-	usb_source_add(sdi->session, devc->ctx, timeout, kingst_la1010_receive_data,
+	usb_source_add(sdi->session, devc->ctx, timeout, kingst_laxxxx_receive_data,
 			drvc);
 
 	devc->convbuffer_size = (get_buffer_size(devc) / devc->num_channels) * 16
@@ -614,7 +840,7 @@ int kingst_la1010_acquisition_start(const struct sr_dev_inst *sdi) {
 
 	if (devc->convbuffer) {
 		if ((ret = command_start_acquisition(sdi)) != SR_OK) {
-			kingst_la1010_acquisition_stop(sdi);
+			kingst_laxxxx_acquisition_stop(sdi);
 			if (devc->convbuffer)
 				g_free(devc->convbuffer);
 			devc->convbuffer = NULL;
@@ -633,74 +859,114 @@ int kingst_la1010_acquisition_start(const struct sr_dev_inst *sdi) {
 static int command_start_acquisition(const struct sr_dev_inst *sdi) {
 	struct dev_context *devc;
 	struct sr_usb_dev_inst *usb;
-	uint64_t samplerate;
-	uint16_t division;
 	int err;
-	uint8_t data[4];
+	uint8_t data[1];
+	struct channels_config chann_cfg;
+	struct samples_config smpl_cfg;
 
 	devc = sdi->priv;
 	usb = sdi->conn;
-	samplerate = devc->cur_samplerate;
 	usb = sdi->conn;
 
-	data[0] = 0;
-	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_START, data, 1);
+	data[0] = 1;
+	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_0x03, data, 1);
 	if (err) {
 		sr_err("Start configure channels failed.");
 		return err;
 	}
 
-	err = control_out(usb->devhdl, CMD_SAMPLING_CONFIG, CMD_SAMPLING_CONFIG,
-			NULL, 0);
+	memset(&chann_cfg, 0, sizeof(struct channels_config));
+	chann_cfg.channels_mask = devc->cur_channels;
+
+	/*
+	 * Kingst LA-1010 without internal memory,
+	 * so the code below is not irrelevant.
+	 * Иut there is no complete certainty about this.
+	 */
+//	if (devc->hw_trigger_channel > 0) {
+//		switch (devc->hw_trigger_type) {
+//		case SR_TRIGGER_ZERO:
+//			chann_cfg.trigger_mask_0 = 1 << devc->hw_trigger_channel;
+//			chann_cfg.trigger_mask_1 = 1 << devc->hw_trigger_channel;
+//			break;
+//		case SR_TRIGGER_ONE:
+//			chann_cfg.trigger_mask_0 = 1 << devc->hw_trigger_channel;
+//			chann_cfg.trigger_mask_1 = 1 << devc->hw_trigger_channel;
+//			chann_cfg.trigger_mask_2 = 1 << devc->hw_trigger_channel;
+//			break;
+//		case SR_TRIGGER_RISING:
+//			chann_cfg.trigger_mask_0 = 1 << devc->hw_trigger_channel;
+//			break;
+//		case SR_TRIGGER_FALLING:
+//			chann_cfg.trigger_mask_0 = 1 << devc->hw_trigger_channel;
+//			chann_cfg.trigger_mask_2 = 1 << devc->hw_trigger_channel;
+//			break;
+//		}
+//	}
+
+	sr_info("Set channels mask: %08X, triggers mask: %08X, %08X, %08X",
+			chann_cfg.channels_mask,
+			chann_cfg.trigger_mask_0,
+			chann_cfg.trigger_mask_1,
+			chann_cfg.trigger_mask_2);
+
+	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_CHAN_SELECT, (uint8_t*) &chann_cfg, sizeof(struct channels_config));
 	if (err) {
-		sr_err("Enter to sampling rate configuration mode failed.");
+		sr_err("Set channel and trigger masks failed.");
 		return err;
 	}
 
-	division = SAMPLING_BASE_FREQUENCY / samplerate;
+	memset(&smpl_cfg, 0, sizeof(struct samples_config));
+	smpl_cfg.samples_count = devc->limit_samples;
+	smpl_cfg.samples_rate = SAMPLING_BASE_FREQUENCY / devc->cur_samplerate * 0x100;
 
-	err = control_out(usb->devhdl,
-	CMD_CONTROL,
-	CMD_CONTROL_SAMPLE_RATE, (uint8_t*) &division, sizeof(division));
+	/*
+	 * Kingst LA-1010 without internal memory,
+	 * so the code below is not irrelevant.
+	 * Иut there is no complete certainty about this.
+	 */
+//	smpl_cfg.trigger_pos = smpl_cfg.samples_count * 0.trig_percent * 0x100;
+
+
+	sr_info("Set samples count: %08X, trigger pos: %08X, sample rate: %08lX -> %08X",
+			smpl_cfg.samples_count,
+			smpl_cfg.trigger_pos,
+			devc->cur_samplerate,
+			smpl_cfg.samples_rate);
+	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_SAMPLE_RATE, (uint8_t*) &smpl_cfg, sizeof(struct samples_config));
 	if (err) {
 		sr_err("Set sample rate failed.");
 		return err;
 	}
 
-	data[0] = devc->cur_channels & 0xFF;
-	data[1] = devc->cur_channels >> 8;
-	data[2] = 0;
-	data[3] = 0;
-	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_CHAN_SELECT, data,
-			4);
+	err = control_out(usb->devhdl, CMD_RESET_BULK_STATE, 0, NULL, 0);
 	if (err) {
-		sr_err("Set channel mask failed.");
+		sr_err("Reset bulk state failed.");
 		return err;
 	}
 
-	data[0] = 1;
-	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_START, data, 1);
+	data[0] = CMD_SMPL_STATUS_RUN;
+	err = control_out(usb->devhdl, CMD_CONTROL, CMD_CONTROL_SMPL, data, 1);
 	if (err) {
-		sr_err("Commit the channels and sample rate configuration failed.");
+		sr_err("Set sampling status failed.");
 		return err;
 	}
 
-	err = control_out(usb->devhdl, CMD_SAMPLING_START, CMD_SAMPLING_START, NULL,
-			0);
+	err = control_out(usb->devhdl, CMD_SAMPLING_START, CMD_CONTROL_SMPL, NULL, 0);
 	if (err) {
-		sr_err("Star sampling failed.");
+		sr_err("Start sampling failed.");
 		return err;
 	}
 
 	return SR_OK;
 }
 
-int kingst_la1010_acquisition_stop(const struct sr_dev_inst *sdi) {
+int kingst_laxxxx_acquisition_stop(const struct sr_dev_inst *sdi) {
 	int i, ret;
 	struct sr_usb_dev_inst *usb;
 	struct dev_context *devc;
 
-	sr_dbg("kingst_la1010_acquisition_stop(): stop requested");
+	sr_dbg("kingst_laxxxx_acquisition_stop(): stop requested");
 	usb = sdi->conn;
 	devc = sdi->priv;
 
@@ -709,19 +975,19 @@ int kingst_la1010_acquisition_stop(const struct sr_dev_inst *sdi) {
 	/*
 	 * There are need send request to stop sampling.
 	 */
-	ret = kingst_la1010_abort_acquisition_request(usb->devhdl);
+	ret = kingst_laxxxx_abort_acquisition_request(usb->devhdl);
 	if (ret)
 		sr_err(
-				"kingst_la1010_acquisition_stop(): Stop sampling error %d. libusb err: %s",
+				"kingst_laxxxx_acquisition_stop(): Stop sampling error %d. libusb err: %s",
 				ret, libusb_error_name(ret));
 
-	sr_dbg("kingst_la1010_acquisition_stop(): cancel %d transfers", devc->num_transfers);
+	sr_dbg("kingst_laxxxx_acquisition_stop(): cancel %d transfers", devc->num_transfers);
 	for (i = devc->num_transfers - 1; i >= 0; i--) {
 		if (devc->transfers[i]) {
 			ret = libusb_cancel_transfer(devc->transfers[i]);
 			if (ret != LIBUSB_ERROR_NOT_FOUND) {
 				sr_err(
-						"kingst_la1010_acquisition_stop(): cancel %d transfer error %d. libusb err: %s",
+						"kingst_laxxxx_acquisition_stop(): cancel %d transfer error %d. libusb err: %s",
 						i, ret, libusb_error_name(ret));
 			}
 		}
@@ -735,8 +1001,7 @@ int kingst_la1010_acquisition_stop(const struct sr_dev_inst *sdi) {
  * Configure threshold levels.
  * Available from -4.0 to 4.0.
  */
-int kingst_la1010_set_logic_level(struct libusb_device_handle *hdl,
-		double level) {
+int kingst_laxxxx_set_logic_level(struct libusb_device_handle *hdl, double level) {
 	uint32_t data;
 	int err;
 
@@ -772,7 +1037,7 @@ int kingst_la1010_set_logic_level(struct libusb_device_handle *hdl,
 
 	err = control_out(hdl,
 						CMD_CONTROL,
-						CMD_CONTROL_LOG_LEVEL,
+						CMD_CONTROL_THRS_LEVEL,
 						(uint8_t*) &data,
 						sizeof(data));
 	if (err)
@@ -787,13 +1052,21 @@ int kingst_la1010_set_logic_level(struct libusb_device_handle *hdl,
  *										duty between 1 and 99.
  * Frequency == 0 -- power off PWM channel.
  */
-int kingst_la1010_configure_pwm(struct libusb_device_handle *hdl,
+int kingst_laxxxx_configure_pwm(struct libusb_device_handle *hdl,
 								uint64_t pwm1_freq,
 								uint64_t pwm1_duty,
 								uint64_t pwm2_freq,
 								uint64_t pwm2_duty) {
 	uint32_t data[2];
+	uint8_t pwm_state;
 	int err;
+
+	pwm_state = 0;
+	// Turn off PWM
+	data[0] = pwm_state;
+	err = control_out(hdl, CMD_CONTROL, CMD_CONTROL_PWM, (uint8_t*) &data, 1);
+	if (err)
+		return err;
 
 	if (pwm1_duty > 100) {
 		sr_err("Wrong PWM1 duty ratio, given %ld, but only 0 .. 100 allowed",
@@ -807,6 +1080,7 @@ int kingst_la1010_configure_pwm(struct libusb_device_handle *hdl,
 	}
 
 	if (pwm1_freq) {
+		pwm_state |= 1;
 		/*
 		 * PWM data is division 800000000 to frequency
 		 */
@@ -818,14 +1092,10 @@ int kingst_la1010_configure_pwm(struct libusb_device_handle *hdl,
 	}
 
 	if (pwm2_freq) {
+		pwm_state |= 2;
 		pwm2_freq = PWM_BASE_FREQUENCY / pwm2_freq;
 		pwm2_duty = pwm2_freq * pwm2_duty / 100;
 	}
-
-	data[0] = 0x00;
-	err = control_out(hdl, CMD_CONTROL, CMD_CONTROL_PWM, (uint8_t*) &data, 1);
-	if (err)
-		return err;
 
 	data[0] = pwm1_freq;
 	data[1] = pwm1_duty;
@@ -839,7 +1109,8 @@ int kingst_la1010_configure_pwm(struct libusb_device_handle *hdl,
 	if (err)
 		return err;
 
-	data[0] = 0x01;
+	// Turn on PWM channels
+	data[0] = pwm_state;
 	err = control_out(hdl, CMD_CONTROL, CMD_CONTROL_PWM, (uint8_t*) &data, 1);
 	if (err)
 		return err;
@@ -847,8 +1118,8 @@ int kingst_la1010_configure_pwm(struct libusb_device_handle *hdl,
 	return SR_OK;
 }
 
-int kingst_la1010_dev_open(const struct sr_dev_inst *sdi) {
-	libusb_device **devlist;
+int kingst_laxxxx_dev_open(const struct sr_dev_inst *sdi) {
+	struct libusb_device **devlist;
 	struct sr_dev_driver *di;
 	struct sr_usb_dev_inst *usb;
 	struct libusb_device_descriptor des;
@@ -872,8 +1143,8 @@ int kingst_la1010_dev_open(const struct sr_dev_inst *sdi) {
 	for (i = 0; i < device_count; i++) {
 		libusb_get_device_descriptor(devlist[i], &des);
 
-		if (des.idVendor != devc->profile->vid
-				|| des.idProduct != devc->profile->pid)
+		if (des.idVendor != devc->profile.vid
+				|| des.idProduct != devc->profile.pid)
 			continue;
 
 		if ((sdi->status == SR_ST_INITIALIZING)
@@ -931,7 +1202,7 @@ abort_acquisition_request_cb(struct libusb_transfer *transfer) {
 	libusb_free_transfer(transfer);
 }
 
-int kingst_la1010_abort_acquisition_request(libusb_device_handle *handle) {
+int kingst_laxxxx_abort_acquisition_request(libusb_device_handle *handle) {
 	struct libusb_transfer *transfer;
 	unsigned char *buffer;
 	int ret;
@@ -950,7 +1221,7 @@ int kingst_la1010_abort_acquisition_request(libusb_device_handle *handle) {
 	libusb_fill_control_setup(buffer,
 								LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR,
 								CMD_CONTROL,
-								CMD_CONTROL_START,
+								CMD_CONTROL_SMPL,
 								0,
 								1);
 	buffer[LIBUSB_CONTROL_SETUP_SIZE] = 0;
@@ -1111,7 +1382,7 @@ receive_transfer(struct libusb_transfer *transfer) {
 	switch (transfer->status) {
 	case LIBUSB_TRANSFER_NO_DEVICE:
 		sr_err("receive_transfer(): no device");
-		kingst_la1010_acquisition_stop(sdi);
+		kingst_laxxxx_acquisition_stop(sdi);
 		free_transfer(transfer);
 		return;
 	case LIBUSB_TRANSFER_COMPLETED:
@@ -1126,7 +1397,7 @@ receive_transfer(struct libusb_transfer *transfer) {
 		devc->empty_transfer_count++;
 		if (devc->empty_transfer_count > MAX_EMPTY_TRANSFERS) {
 			sr_err("receive_transfer(): MAX_EMPTY_TRANSFERS exceeded");
-			kingst_la1010_acquisition_stop(sdi);
+			kingst_laxxxx_acquisition_stop(sdi);
 			free_transfer(transfer);
 		} else {
 			sr_err(
@@ -1153,7 +1424,7 @@ receive_transfer(struct libusb_transfer *transfer) {
 	if (new_samples == 0) {
 		if (transfer->actual_length) {
 			sr_err("receive_transfer(): convert data failed");
-			kingst_la1010_acquisition_stop(sdi);
+			kingst_laxxxx_acquisition_stop(sdi);
 			free_transfer(transfer);
 			return;
 		} else {
@@ -1194,13 +1465,13 @@ receive_transfer(struct libusb_transfer *transfer) {
 	if (devc->limit_samples && (devc->sent_samples >= devc->limit_samples)) {
 		sr_dbg("receive_transfer(): samples limit reached %ld",
 				devc->sent_samples);
-		kingst_la1010_acquisition_stop(sdi);
+		kingst_laxxxx_acquisition_stop(sdi);
 		free_transfer(transfer);
 	} else
 		resubmit_transfer(transfer);
 }
 
-int kingst_la1010_configure_channels(const struct sr_dev_inst *sdi) {
+int kingst_laxxxx_configure_channels(const struct sr_dev_inst *sdi) {
 	struct dev_context *devc;
 	const GSList *l;
 	struct sr_channel *ch;
@@ -1332,7 +1603,7 @@ static int start_transfers(const struct sr_dev_inst *sdi) {
 			if (i == 0) {
 				sr_err("Failed to submit transfer: %s.",
 						libusb_error_name(ret));
-				kingst_la1010_acquisition_stop(sdi);
+				kingst_laxxxx_acquisition_stop(sdi);
 				return SR_ERR;
 			} else {
 				break;
@@ -1451,11 +1722,12 @@ int upload_bindata_sync(libusb_device_handle *handle,
 	return size;
 }
 
-struct dev_context* kingst_la1010_dev_new(void) {
+struct dev_context* kingst_laxxxx_dev_new(const uint16_t vendor_id, const char * vendor_name) {
 	struct dev_context *devc;
 
 	devc = g_malloc0(sizeof(struct dev_context));
-	devc->profile = NULL;
+	devc->profile.vid = vendor_id;
+	devc->profile.vendor = vendor_name;
 	devc->fw_updated = 0;
 	devc->cur_samplerate = 0;
 	devc->limit_samples = 0;

@@ -20,18 +20,11 @@
 #include <config.h>
 #include "protocol.h"
 
-static const struct kingst_la1010_profile la1010_profile = {
-		.vid = 0x77A1,
-		.pid = 0x01A2,
-		.vendor = "Kingst",
-		.model = "LA1010",
-		.model_version = 0,
-//		.fx_firmware = "LA1010.fw",
-		.fx_firmware = 0,	// file name will be retrieved from PID
-		.spartan_firmware = "LA1010.bitstream",
-		.dev_caps = DEV_CAPS_16BIT,
-		.usb_manufacturer = NULL,
-		.usb_product = NULL };
+
+const uint16_t vendor_id = 0x77A1;
+const char vendor_name[] = "Kingst";
+
+const uint16_t supported_pids[] = { 0x01A1, 0x01A2, 0x01A3, 0x01A4, 0x03A1 };
 
 static const uint32_t scanopts[] = { SR_CONF_CONN, };
 
@@ -98,6 +91,80 @@ static const double thresholds[][2] = {
 		{ 0.75, 0.75 },     // CMOS 1.5
 		};
 
+
+struct libusb_device_handle * reconnect(struct drv_context *drvc, char * connection_id, struct dev_context *devc);
+
+struct libusb_device_handle * reconnect(struct drv_context *drvc, char * connection_id, struct dev_context *devc) {
+	struct libusb_device **devlist;
+	struct libusb_device_descriptor des;
+	char connection_id_buff[64];
+	struct libusb_device_handle *res = NULL;
+	int device_count, i, ret = 0;
+	int64_t timediff_us, timediff_ms;
+
+	/* Takes >= 300ms for the FX2 to be gone from the USB bus. */
+	g_usleep(300 * 1000);
+	timediff_ms = 0;
+	while (timediff_ms < MAX_RENUM_DELAY_MS) {
+
+		device_count = libusb_get_device_list(drvc->sr_ctx->libusb_ctx, &devlist);
+		if (device_count < 0) {
+			sr_err("Failed to get device list: %s.", libusb_error_name(device_count));
+			break;
+		}
+
+		for (i = 0; i < device_count; i++) {
+			libusb_get_device_descriptor(devlist[i], &des);
+
+			if (des.idVendor != devc->profile.vid
+					|| des.idProduct != devc->profile.pid)
+				continue;
+
+			usb_get_port_path(devlist[i], connection_id_buff, sizeof(connection_id_buff));
+			if (strcmp(connection_id_buff, connection_id))
+				/* This is not the one. */
+				continue;
+
+			if ((ret = libusb_open(devlist[i], &res)) != 0) {
+				sr_err("Failed to open device: %s.", libusb_error_name(ret));
+				ret = SR_ERR;
+				break;
+			}
+
+			if (libusb_has_capability(LIBUSB_CAP_SUPPORTS_DETACH_KERNEL_DRIVER)) {
+				if (libusb_kernel_driver_active(res, USB_INTERFACE) == 1) {
+					if ((ret = libusb_detach_kernel_driver(res, USB_INTERFACE)) < 0) {
+						sr_err("Failed to detach kernel driver: %s.",
+								libusb_error_name(ret));
+						ret = SR_ERR;
+						break;
+					}
+				}
+			}
+
+			ret = SR_OK;
+
+			break;
+		}
+
+		libusb_free_device_list(devlist, 1);
+
+		g_usleep(100 * 1000);
+
+		timediff_us = g_get_monotonic_time() - devc->fw_updated;
+		timediff_ms = timediff_us / 1000;
+		sr_spew("Waited %" PRIi64 "ms.", timediff_ms);
+	}
+
+	if (ret) {
+		if (res) {
+			libusb_close(res);
+			res = NULL;
+		}
+	}
+	return res;
+}
+
 static GSList* scan(struct sr_dev_driver *di, GSList *options) {
 
 	struct drv_context *drvc;
@@ -107,20 +174,22 @@ static GSList* scan(struct sr_dev_driver *di, GSList *options) {
 	struct sr_channel *ch;
 	struct sr_channel_group *cg;
 	struct sr_config *src;
-	const struct kingst_la1010_profile *prof;
+	struct kingst_laxxxx_desc * device_desc;
 	GSList *l, *devices, *conn_devices;
 	struct libusb_device_descriptor des;
 	libusb_device **devlist;
 	struct libusb_device_handle *hdl;
-	int ret, i, j;
-	int num_logic_channels = 0;
+	int ret, i, device_count;
 	const char *conn;
-	char manufacturer[64], product[64], serial_num[64], connection_id[64];
+	char serial_num[64], connection_id[64];
 	char channel_name[32];
+	unsigned int j;
 
 	drvc = di->context;
 	hdl = NULL;
 	conn = NULL;
+	device_desc = NULL;
+	devc = NULL;
 
 	for (l = options; l; l = l->next) {
 		src = l->data;
@@ -137,159 +206,164 @@ static GSList* scan(struct sr_dev_driver *di, GSList *options) {
 
 	/* Find all Kingst LA1010 compatible devices and upload firmware to them. */
 	devices = NULL;
-	libusb_get_device_list(drvc->sr_ctx->libusb_ctx, &devlist);
-	for (i = 0; devlist[i]; i++) {
+	device_count = libusb_get_device_list(drvc->sr_ctx->libusb_ctx, &devlist);
+	if (device_count > 0) {
+		for (i = 0; i < device_count; i++) {
+
+			if (devc && !sdi) {
+				g_free(devc);
+			}
+			devc = NULL;
+
+			if (hdl) {
+				libusb_close(hdl);
+				hdl = NULL;
+			}
+
+			if (conn) {
+				usb = NULL;
+				for (l = conn_devices; l; l = l->next) {
+					usb = l->data;
+					if ((usb->bus == libusb_get_bus_number(devlist[i]))
+							&& (usb->address == libusb_get_device_address(devlist[i])))
+						break;
+				}
+				if (!l)
+					/* This device matched none of the ones that
+					 * matched the conn specification. */
+					continue;
+			}
+
+			libusb_get_device_descriptor(devlist[i], &des);
+
+			if (des.idVendor == vendor_id) {
+				for (j = 0; j < sizeof(supported_pids) / sizeof(uint16_t); j++) {
+					if (des.idProduct == supported_pids[j]) {
+						devc = kingst_laxxxx_dev_new(vendor_id, vendor_name);
+						devc->profile.pid = des.idProduct;
+						sr_dbg("Found candidate with vid:pid: %04X:%04X.", des.idVendor, des.idProduct);
+						break;
+					}
+				}
+			}
+
+			if (devc) {
+
+				sr_dbg("Candidate verification...");
+
+				if ((ret = libusb_open(devlist[i], &hdl)) < 0) {
+					sr_warn("Failed to open potential device with " "VID:PID %04x:%04x: %s.",
+								des.idVendor,
+								des.idProduct,
+								libusb_error_name(ret));
+					continue;
+				}
+
+				if (des.iSerialNumber == 0) {
+					serial_num[0] = '\0';
+				} else if ((ret = libusb_get_string_descriptor_ascii(hdl,
+																		des.iSerialNumber,
+																		(unsigned char*) serial_num,
+																		sizeof(serial_num))) < 0) {
+					sr_warn("Failed to get serial number string descriptor: %s.",
+								libusb_error_name(ret));
+					serial_num[0] = '\0';
+				}
+
+				usb_get_port_path(devlist[i], connection_id, sizeof(connection_id));
+
+				if (kingst_laxxxx_has_fx_firmware(hdl, &device_desc)) {
+					// No firmware in Cypress
+
+					sr_dbg("Candidate without FX2 firmware");
+
+					if (kingst_laxxxx_upload_cypress_firmware(drvc->sr_ctx,
+																hdl,
+																&(devc->profile)) == SR_OK) {
+						/* Store when this device's FW was updated. */
+						devc->fw_updated = g_get_monotonic_time();
+						sr_dbg("FX2 firmware was uploaded to Kingst LA1010 device. Reconnecting...");
+
+						// Reconnect device
+						libusb_close(hdl);
+						hdl = reconnect(drvc, connection_id, devc);
+
+						if (kingst_laxxxx_has_fx_firmware(hdl, &device_desc)) {
+							// No firmware in Cypress
+							sr_err("Reconnecting after firmware upload failed for device %d.%d (logical).",
+										libusb_get_bus_number(devlist[i]),
+										libusb_get_device_address(devlist[i]));
+						}
+					} else {
+						sr_err("Firmware upload failed for device %d.%d (logical).",
+									libusb_get_bus_number(devlist[i]),
+									libusb_get_device_address(devlist[i]));
+					}
+				}
+
+				if (device_desc) {
+
+					sr_dbg("Found supported device '%s' id '%d' variant '%d'.",
+									device_desc->model,
+									device_desc->device_id,
+									device_desc->device_variant);
+
+					sdi = g_malloc0(sizeof(struct sr_dev_inst));
+
+					sdi->inst_type = SR_INST_USB;
+					sdi->conn = sr_usb_dev_inst_new(libusb_get_bus_number(devlist[i]),
+													libusb_get_device_address(devlist[i]),
+													NULL);
+
+					sdi->status = SR_ST_INITIALIZING;
+					sdi->vendor = g_strdup(devc->profile.vendor);
+					sdi->serial_num = g_strdup(serial_num);
+					sdi->connection_id = g_strdup(connection_id);
+					devc->profile.description = device_desc;
+
+					sdi->model = g_strdup(device_desc->model);
+					sdi->version = g_strdup("");
+
+					/* Logic channels, all in one channel group. */
+					cg = g_malloc0(sizeof(struct sr_channel_group));
+					cg->name = g_strdup("Logic");
+					for (j = 0; j < devc->profile.description->num_logic_channels; j++) {
+						sprintf(channel_name, "D%d", j);
+						ch = sr_channel_new(sdi, j, SR_CHANNEL_LOGIC, TRUE, channel_name);
+						cg->channels = g_slist_append(cg->channels, ch);
+					}
+					sdi->channel_groups = g_slist_append(NULL, cg);
+
+					devc->samplerates = samplerates;
+					devc->num_samplerates = ARRAY_SIZE(samplerates);
+
+					devc->pwm[0].freq = 1000;
+					devc->pwm[0].duty = 50;
+					devc->pwm[0].enabled = 0;
+					devc->pwm[1].freq = 1000;
+					devc->pwm[1].duty = 50;
+					devc->pwm[1].enabled = 0;
+
+					sdi->priv = devc;
+					devices = g_slist_append(devices, sdi);
+				}
+			} else {
+				libusb_close(hdl);
+				hdl = NULL;
+			}
+		}
+
+		if (devc && !sdi) {
+			g_free(devc);
+			devc = NULL;
+		}
 
 		if (hdl) {
 			libusb_close(hdl);
 			hdl = NULL;
 		}
-
-		if (conn) {
-			usb = NULL;
-			for (l = conn_devices; l; l = l->next) {
-				usb = l->data;
-				if ((usb->bus == libusb_get_bus_number(devlist[i]))
-						&& (usb->address == libusb_get_device_address(devlist[i])))
-					break;
-			}
-			if (!l)
-				/* This device matched none of the ones that
-				 * matched the conn specification. */
-				continue;
-		}
-
-		libusb_get_device_descriptor(devlist[i], &des);
-
-		if ((des.idVendor != la1010_profile.vid)
-				|| (des.idProduct != la1010_profile.pid))
-			continue;
-
-		if ((ret = libusb_open(devlist[i], &hdl)) < 0) {
-			sr_warn("Failed to open potential device with " "VID:PID %04x:%04x: %s.",
-						des.idVendor,
-						des.idProduct,
-						libusb_error_name(ret));
-			continue;
-		}
-
-		if (des.iManufacturer == 0) {
-			manufacturer[0] = '\0';
-		} else if ((ret = libusb_get_string_descriptor_ascii(hdl,
-																des.iManufacturer,
-																(unsigned char*) manufacturer,
-																sizeof(manufacturer))) < 0) {
-			sr_warn("Failed to get manufacturer string descriptor: %s.",
-						libusb_error_name(ret));
-			continue;
-		}
-
-		if (des.iProduct == 0) {
-			product[0] = '\0';
-		} else if ((ret = libusb_get_string_descriptor_ascii(hdl,
-																des.iProduct,
-																(unsigned char*) product,
-																sizeof(product))) < 0) {
-			sr_warn("Failed to get product string descriptor: %s.",
-						libusb_error_name(ret));
-			continue;
-		}
-
-		if (des.iSerialNumber == 0) {
-			serial_num[0] = '\0';
-		} else if ((ret = libusb_get_string_descriptor_ascii(hdl,
-																des.iSerialNumber,
-																(unsigned char*) serial_num,
-																sizeof(serial_num))) < 0) {
-			sr_warn("Failed to get serial number string descriptor: %s.",
-						libusb_error_name(ret));
-			continue;
-		}
-
-		usb_get_port_path(devlist[i], connection_id, sizeof(connection_id));
-
-		prof = NULL;
-		if ((des.idVendor == la1010_profile.vid)
-				&& (des.idProduct == la1010_profile.pid)
-				&& (!la1010_profile.usb_manufacturer
-						|| !strcmp(manufacturer,
-								la1010_profile.usb_manufacturer))
-				&& (!la1010_profile.usb_product
-						|| !strcmp(product, la1010_profile.usb_product))) {
-			prof = &la1010_profile;
-		}
-
-		if (!prof) {
-			libusb_close(hdl);
-			hdl = NULL;
-			continue;
-		}
-
-		sdi = g_malloc0(sizeof(struct sr_dev_inst));
-		sdi->status = SR_ST_INITIALIZING;
-		sdi->vendor = g_strdup(prof->vendor);
-		sdi->model = g_strdup(prof->model);
-		sdi->version = g_strdup(prof->model_version);
-		sdi->serial_num = g_strdup(serial_num);
-		sdi->connection_id = g_strdup(connection_id);
-
-		/* Fill in channellist according to this device's profile. */
-		num_logic_channels = prof->dev_caps & DEV_CAPS_16BIT ? 16 : 8;
-
-		/* Logic channels, all in one channel group. */
-		cg = g_malloc0(sizeof(struct sr_channel_group));
-		cg->name = g_strdup("Logic");
-		for (j = 0; j < num_logic_channels; j++) {
-			sprintf(channel_name, "D%d", j);
-			ch = sr_channel_new(sdi, j, SR_CHANNEL_LOGIC, TRUE, channel_name);
-			cg->channels = g_slist_append(cg->channels, ch);
-		}
-		sdi->channel_groups = g_slist_append(NULL, cg);
-
-		devc = kingst_la1010_dev_new();
-		devc->profile = prof;
-		sdi->priv = devc;
-		devices = g_slist_append(devices, sdi);
-
-		devc->samplerates = samplerates;
-		devc->num_samplerates = ARRAY_SIZE(samplerates);
-
-		devc->pwm[0].freq = 1000;
-		devc->pwm[0].duty = 50;
-		devc->pwm[0].enabled = 0;
-		devc->pwm[1].freq = 1000;
-		devc->pwm[1].duty = 50;
-		devc->pwm[1].enabled = 0;
-
-		if (kingst_la1010_has_fx_firmware(hdl) == 0) {
-			/* Already has the firmware, so fix the new address. */
-			sdi->status = SR_ST_INACTIVE;
-			sdi->inst_type = SR_INST_USB;
-			sdi->conn = sr_usb_dev_inst_new(libusb_get_bus_number(devlist[i]),
-											libusb_get_device_address(devlist[i]),
-											NULL);
-		} else {
-			if (kingst_la1010_upload_cypress_firmware(drvc->sr_ctx,
-														hdl,
-														prof) == SR_OK) {
-				/* Store when this device's FW was updated. */
-				devc->fw_updated = g_get_monotonic_time();
-				sr_dbg("FX2 firmware was uploaded to Kingst LA1010 device.");
-			} else
-				sr_err("Firmware upload failed for " "device %d.%d (logical).",
-							libusb_get_bus_number(devlist[i]),
-							libusb_get_device_address(devlist[i]));
-
-			sdi->inst_type = SR_INST_USB;
-			sdi->conn = sr_usb_dev_inst_new(libusb_get_bus_number(devlist[i]),
-											0xff,
-											NULL);
-		}
-	}
-
-	if (hdl) {
-		libusb_close(hdl);
-		hdl = NULL;
+	} else {
+		sr_err("Failed to get device list: %s.", libusb_error_name(device_count));
 	}
 
 	libusb_free_device_list(devlist, 1);
@@ -302,7 +376,6 @@ static int dev_open(struct sr_dev_inst *sdi) {
 	struct sr_usb_dev_inst *usb;
 	struct dev_context *devc;
 	int ret;
-	int64_t timediff_us, timediff_ms;
 
 	devc = sdi->priv;
 	usb = sdi->conn;
@@ -311,31 +384,7 @@ static int dev_open(struct sr_dev_inst *sdi) {
 	 * If the firmware was recently uploaded, wait up to MAX_RENUM_DELAY_MS
 	 * milliseconds for the FX2 to renumerate.
 	 */
-	ret = SR_ERR;
-	if (devc->fw_updated > 0) {
-		sr_info("Waiting for device to reset.");
-		/* Takes >= 300ms for the FX2 to be gone from the USB bus. */
-		g_usleep(300 * 1000);
-		timediff_ms = 0;
-		while (timediff_ms < MAX_RENUM_DELAY_MS) {
-			if ((ret = kingst_la1010_dev_open(sdi)) == SR_OK)
-				break;
-			g_usleep(100 * 1000);
-
-			timediff_us = g_get_monotonic_time() - devc->fw_updated;
-			timediff_ms = timediff_us / 1000;
-			sr_spew("Waited %" PRIi64 "ms.", timediff_ms);
-		}
-		if (ret != SR_OK) {
-			sr_err("Device failed to renumerate.");
-			return SR_ERR;
-		}
-		sr_info("Device came back after %" PRIi64 "ms.", timediff_ms);
-	} else {
-		sr_info("Cypress firmware upload was not needed.");
-		ret = kingst_la1010_dev_open(sdi);
-	}
-
+	ret = kingst_laxxxx_dev_open(sdi);
 	if (ret != SR_OK) {
 		sr_err("Unable to open device.");
 		return SR_ERR;
@@ -359,22 +408,14 @@ static int dev_open(struct sr_dev_inst *sdi) {
 		return SR_ERR;
 	}
 
-	sr_dbg("Checking Cypress firmware...");
-
-	ret = kingst_la1010_has_fx_firmware(usb->devhdl);
-	if (ret) {
-		sr_err("Cypress wasn't initialized. Return status: 0x%x", ret);
-		return SR_ERR;
-	}
-
 	sr_dbg("Upload Spartan firmware...");
-	ret = kingst_la1010_upload_spartan_firmware(sdi);
+	ret = kingst_laxxxx_upload_spartan_firmware(sdi);
 	if (ret) {
 		sr_err("Upload Spartan firmware failed. Return status: 0x%x", ret);
 		return SR_ERR;
 	}
 
-	ret = kingst_la1010_init_spartan(usb->devhdl);
+	ret = kingst_laxxxx_init_spartan(usb->devhdl);
 	if (ret) {
 		sr_err("Initialization of Spartan failed. Error: %s",
 				libusb_error_name(ret));
@@ -490,7 +531,7 @@ static int config_set(uint32_t key, GVariant *data,
 			return SR_ERR_ARG;
 		devc->selected_voltage_level = idx;
 		usb = sdi->conn;
-		kingst_la1010_set_logic_level(usb->devhdl, thresholds[idx][0]);
+		kingst_laxxxx_set_logic_level(usb->devhdl, thresholds[idx][0]);
 		break;
 	default:
 		return SR_ERR_NA;
@@ -535,12 +576,12 @@ static int config_list(uint32_t key, GVariant **data,
 
 static int dev_acquisition_start(const struct sr_dev_inst *sdi) {
 	sr_dbg("dev_acquisition_start(): start sampling");
-	return kingst_la1010_acquisition_start(sdi);
+	return kingst_laxxxx_acquisition_start(sdi);
 }
 
 static int dev_acquisition_stop(struct sr_dev_inst *sdi) {
 	sr_dbg("dev_acquisition_start(): stop sampling");
-	return kingst_la1010_acquisition_stop(sdi);
+	return kingst_laxxxx_acquisition_stop(sdi);
 }
 
 SR_PRIV struct sr_dev_driver kingst_la1010_driver_info = { .name =
