@@ -2,7 +2,7 @@
 
 Although this project contains up-to-date sources, it is mainly used for bug reports.
 
-For build 'sigrok' with Kingst LA-1010 support use sources from https://github.com/AlexUg/sigrok (this is fork of original repo).
+For build 'sigrok' with Kingst LA-1010 support use sources from https://github.com/AlexUg/libsigrok (this is fork of original repo).
 The support of Kingst LA-2016 is included in original repo. Implementation of LA-2016 is conflicting with LA-1010, so the support of LA-2016 is removed in fork.
 
 For the device to work, you need firmwares that can be extracted from the KingstVIS version 3.5.x binary using a script 'fwextractor.py'.
